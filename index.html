@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4A90E2">
+    <title>現場業務アシスタント</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.svg">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>📱 現場業務アシスタント</h1>
+            <p class="date" id="currentDate"></p>
+            <div id="currentUserDisplay"
+                style="margin-top: 10px; padding: 10px; background: rgba(255,255,255,0.2); border-radius: 8px; display: none;">
+                <span style="font-size: 14px;">👤 </span>
+                <span id="currentUserName" style="font-weight: 600;"></span>
+                <a href="pages/user-select.html"
+                    style="color: white; text-decoration: underline; margin-left: 10px; font-size: 14px;">変更</a>
+                <button id="syncBtn"
+                    style="margin-left: 10px; padding: 2px 8px; font-size: 12px; background: rgba(0,0,0,0.2); color: white; border: none; border-radius: 4px; cursor: pointer;">🔄
+                    同期</button>
+            </div>
+        </header>
+
+        <main>
+            <section class="menu-section">
+                <h2>👤 勤怠関連</h2>
+                <div class="menu-grid">
+                    <a href="pages/late-early.html" class="menu-item">
+                        <span class="icon">🕐</span>
+                        <span class="label">遅刻/早退</span>
+                    </a>
+                    <a href="pages/paid-leave.html" class="menu-item">
+                        <span class="icon">🏖️</span>
+                        <span class="label">有給申請</span>
+                    </a>
+                    <a href="pages/compensatory-leave.html" class="menu-item">
+                        <span class="icon">📅</span>
+                        <span class="label">代休申請</span>
+                    </a>
+                    <a href="pages/user-select.html" class="menu-item">
+                        <span class="icon">👤</span>
+                        <span class="label">ユーザー選択</span>
+                    </a>
+                </div>
+            </section>
+
+            <section class="menu-section">
+                <h2>⚙️ 作業関連</h2>
+                <div class="menu-grid">
+                    <a href="pages/night-shift.html" class="menu-item">
+                        <span class="icon">📋</span>
+                        <span class="label">夜勤申請シート</span>
+                    </a>
+                    <a href="pages/night-shift-generate.html" class="menu-item">
+                        <span class="icon">📄</span>
+                        <span class="label">過去データから再生成</span>
+                    </a>
+                </div>
+            </section>
+
+            <section class="menu-section">
+                <h2>📊 データ管理</h2>
+                <div class="menu-grid">
+                    <a href="pages/history.html" class="menu-item">
+                        <span class="icon">📊</span>
+                        <span class="label">データ一覧</span>
+                    </a>
+                    <a href="pages/export.html" class="menu-item">
+                        <span class="icon">💾</span>
+                        <span class="label">CSV出力</span>
+                    </a>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>©2024 現場業務アシスタント</p>
+        </footer>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>
