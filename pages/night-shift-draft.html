@@ -145,6 +145,40 @@
                     <label>名前</label>
                     <input type="text" class="member-name" placeholder="例: 田中さん" required>
                     
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" class="member-direct-return"> 直帰
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; margin-left: 10px;">
+                            <input type="checkbox" class="member-has-pre-overtime" onchange="togglePreInput(this)"> 現場前残業あり
+                        </label>
+                    </div>
+
+                    <!-- 現場前残業入力エリア -->
+                    <div class="pre-overtime-area" style="display: none; background: #f9f9f9; padding: 10px; margin-top: 5px; border-radius: 4px;">
+                        <span style="font-size: 12px; font-weight: bold;">現場前残業（事務所/工場）</span>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">開始</label>
+                                <input type="time" class="pre-start">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">終了</label>
+                                <input type="time" class="pre-end">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩開始</label>
+                                <input type="time" class="pre-break-start">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩終了</label>
+                                <input type="time" class="pre-break-end">
+                            </div>
+                        </div>
+                    </div>
+
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <div style="flex: 1;">
                             <label>休憩時間（分）</label>
@@ -154,6 +188,12 @@
                             <label>残業時間（時間）</label>
                             <input type="number" class="member-overtime" min="0" step="0.5" value="0" placeholder="例: 2">
                         </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" class="member-direct-return"> 直帰
+                        </label>
                     </div>
 
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
@@ -178,12 +218,27 @@
         // 初期表示
         updateMemberInputs();
 
+        // 現場前残業の表示切り替え
+        window.togglePreInput = function (checkbox) {
+            const area = checkbox.closest('.form-group').querySelector('.pre-overtime-area');
+            area.style.display = checkbox.checked ? 'block' : 'none';
+        };
+
         // フォームデータを収集
         function collectFormData() {
             const members = [];
             const memberNames = document.querySelectorAll('.member-name');
             const memberBreaks = document.querySelectorAll('.member-break');
             const memberOvertimes = document.querySelectorAll('.member-overtime');
+            const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+
+            // 現場前残業フィールド
+            const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+            const memberPreStarts = document.querySelectorAll('.pre-start');
+            const memberPreEnds = document.querySelectorAll('.pre-end');
+            const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+            const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+
             const memberBreakStarts = document.querySelectorAll('.member-break-start');
             const memberBreakEnds = document.querySelectorAll('.member-break-end');
 
@@ -192,6 +247,14 @@
                     name: nameInput.value,
                     breakTime: parseInt(memberBreaks[index].value) || 0,
                     overtime: parseFloat(memberOvertimes[index].value) || 0,
+                    directReturn: memberDirectReturns[index].checked,
+                    preSiteOvertime: {
+                        hasOvertime: memberHasPre[index].checked,
+                        startTime: memberPreStarts[index].value,
+                        endTime: memberPreEnds[index].value,
+                        breakStart: memberPreBreakStarts[index].value,
+                        breakEnd: memberPreBreakEnds[index].value
+                    },
                     breakStart: memberBreakStarts[index].value,
                     breakEnd: memberBreakEnds[index].value
                 });
@@ -319,6 +382,14 @@
                 const memberNames = document.querySelectorAll('.member-name');
                 const memberBreaks = document.querySelectorAll('.member-break');
                 const memberOvertimes = document.querySelectorAll('.member-overtime');
+                const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+
+                const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+                const memberPreStarts = document.querySelectorAll('.pre-start');
+                const memberPreEnds = document.querySelectorAll('.pre-end');
+                const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+                const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+
                 const memberBreakStarts = document.querySelectorAll('.member-break-start');
                 const memberBreakEnds = document.querySelectorAll('.member-break-end');
 
@@ -326,6 +397,19 @@
                     if (memberNames[index]) memberNames[index].value = member.name;
                     if (memberBreaks[index]) memberBreaks[index].value = member.breakTime || 0;
                     if (memberOvertimes[index]) memberOvertimes[index].value = member.overtime || 0;
+                    if (memberDirectReturns[index]) memberDirectReturns[index].checked = member.directReturn || false;
+
+                    if (member.preSiteOvertime) {
+                        if (memberHasPre[index]) {
+                            memberHasPre[index].checked = member.preSiteOvertime.hasOvertime;
+                            togglePreInput(memberHasPre[index]);
+                        }
+                        if (memberPreStarts[index]) memberPreStarts[index].value = member.preSiteOvertime.startTime || '';
+                        if (memberPreEnds[index]) memberPreEnds[index].value = member.preSiteOvertime.endTime || '';
+                        if (memberPreBreakStarts[index]) memberPreBreakStarts[index].value = member.preSiteOvertime.breakStart || '';
+                        if (memberPreBreakEnds[index]) memberPreBreakEnds[index].value = member.preSiteOvertime.breakEnd || '';
+                    }
+
                     if (memberBreakStarts[index]) memberBreakStarts[index].value = member.breakStart || '';
                     if (memberBreakEnds[index]) memberBreakEnds[index].value = member.breakEnd || '';
                 });

@@ -207,12 +207,50 @@
                 memberDiv.style.borderRadius = '8px';
                 memberDiv.style.marginBottom = '10px';
 
-                const memberData = loadedMembers && loadedMembers[i] ? loadedMembers[i] : { name: '', breakTime: 0, overtime: 0, breakStart: '', breakEnd: '' };
+                const memberData = loadedMembers && loadedMembers[i] ? loadedMembers[i] : {
+                    name: '', breakTime: 0, overtime: 0, breakStart: '', breakEnd: '',
+                    directReturn: false, preSiteOvertime: { hasOvertime: false }
+                };
 
                 memberDiv.innerHTML = `
                     <h4>メンバー ${i + 1}</h4>
                     <label>名前</label>
                     <input type="text" class="member-name" placeholder="例: 田中さん" value="${memberData.name}" required>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" class="member-direct-return" ${memberData.directReturn ? 'checked' : ''}> 直帰
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; margin-left: 10px;">
+                            <input type="checkbox" class="member-has-pre-overtime" onchange="togglePreInput(this)" 
+                                ${memberData && memberData.preSiteOvertime && memberData.preSiteOvertime.hasOvertime ? 'checked' : ''}> 現場前残業あり
+                        </label>
+                    </div>
+
+                    <!-- 現場前残業入力エリア -->
+                    <div class="pre-overtime-area" style="display: ${memberData && memberData.preSiteOvertime && memberData.preSiteOvertime.hasOvertime ? 'block' : 'none'}; background: #f9f9f9; padding: 10px; margin-top: 5px; border-radius: 4px;">
+                        <span style="font-size: 12px; font-weight: bold;">現場前残業（事務所/工場）</span>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">開始</label>
+                                <input type="time" class="pre-start" value="${memberData.preSiteOvertime?.startTime || ''}">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">終了</label>
+                                <input type="time" class="pre-end" value="${memberData.preSiteOvertime?.endTime || ''}">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩開始</label>
+                                <input type="time" class="pre-break-start" value="${memberData.preSiteOvertime?.breakStart || ''}">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩終了</label>
+                                <input type="time" class="pre-break-end" value="${memberData.preSiteOvertime?.breakEnd || ''}">
+                            </div>
+                        </div>
+                    </div>
                     
                     <div style="display: flex; gap: 10px; margin-top: 10px;">
                         <div style="flex: 1;">
@@ -247,6 +285,12 @@
         // 初期表示
         updateMemberInputs();
 
+        // 現場前残業の表示切り替え
+        window.togglePreInput = function (checkbox) {
+            const area = checkbox.closest('.form-group').querySelector('.pre-overtime-area');
+            area.style.display = checkbox.checked ? 'block' : 'none';
+        };
+
         // サンプルデータ入力ボタン
         document.getElementById('fillSampleBtn').addEventListener('click', function () {
             document.getElementById('shiftDate').valueAsDate = new Date();
@@ -269,6 +313,12 @@
                 const memberNames = document.querySelectorAll('.member-name');
                 const memberBreaks = document.querySelectorAll('.member-break');
                 const memberOvertimes = document.querySelectorAll('.member-overtime');
+                const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+                const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+                const memberPreStarts = document.querySelectorAll('.pre-start');
+                const memberPreEnds = document.querySelectorAll('.pre-end');
+                const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+                const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
                 const memberBreakStarts = document.querySelectorAll('.member-break-start');
                 const memberBreakEnds = document.querySelectorAll('.member-break-end');
 
@@ -279,6 +329,20 @@
                     // 休憩時間を適当に設定（例: 00:00 - 01:00）
                     if (memberBreakStarts[i]) memberBreakStarts[i].value = '00:00';
                     if (memberBreakEnds[i]) memberBreakEnds[i].value = '01:00';
+
+                    // 2人目のメンバーに現場前残業を設定
+                    if (i === 1) {
+                        if (memberHasPre[i]) {
+                            memberHasPre[i].checked = true;
+                            // 手動で表示を切り替える
+                            const area = memberHasPre[i].closest('.form-group').querySelector('.pre-overtime-area');
+                            if (area) area.style.display = 'block';
+                        }
+                        if (memberPreStarts[i]) memberPreStarts[i].value = '17:00';
+                        if (memberPreEnds[i]) memberPreEnds[i].value = '18:00';
+                        if (memberPreBreakStarts[i]) memberPreBreakStarts[i].value = '';
+                        if (memberPreBreakEnds[i]) memberPreBreakEnds[i].value = '';
+                    }
                 });
 
                 alert('✅ サンプルデータを入力しました。「プレビュー」ボタンを押して確認してください。');
@@ -314,6 +378,14 @@
             const memberNames = document.querySelectorAll('.member-name');
             const memberBreaks = document.querySelectorAll('.member-break');
             const memberOvertimes = document.querySelectorAll('.member-overtime');
+            const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+
+            const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+            const memberPreStarts = document.querySelectorAll('.pre-start');
+            const memberPreEnds = document.querySelectorAll('.pre-end');
+            const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+            const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+
             const memberBreakStarts = document.querySelectorAll('.member-break-start');
             const memberBreakEnds = document.querySelectorAll('.member-break-end');
 
@@ -322,6 +394,14 @@
                     name: nameInput.value,
                     breakTime: parseInt(memberBreaks[index].value) || 0,
                     overtime: parseFloat(memberOvertimes[index].value) || 0,
+                    directReturn: memberDirectReturns[index] ? memberDirectReturns[index].checked : false,
+                    preSiteOvertime: {
+                        hasOvertime: memberHasPre[index] ? memberHasPre[index].checked : false,
+                        startTime: memberPreStarts[index] ? memberPreStarts[index].value : '',
+                        endTime: memberPreEnds[index] ? memberPreEnds[index].value : '',
+                        breakStart: memberPreBreakStarts[index] ? memberPreBreakStarts[index].value : '',
+                        breakEnd: memberPreBreakEnds[index] ? memberPreBreakEnds[index].value : ''
+                    },
                     breakStart: memberBreakStarts[index].value,
                     breakEnd: memberBreakEnds[index].value
                 });
@@ -388,7 +468,73 @@
                 const breakStartMins = timeToMinutes(member.breakStart);
                 const breakEndMins = timeToMinutes(member.breakEnd);
 
-                // バー生成関数
+                // --- 時間計算ロジック (night-shift.htmlに合わせる) ---
+
+                // 1. 現場前残業（事務所/工場）
+                let preSiteGrossHours = 0; // 休憩込み
+                let preSiteNetHours = 0; // 休憩抜き
+                let preSiteBreakMinutes = 0;
+
+                if (member.preSiteOvertime && member.preSiteOvertime.hasOvertime) {
+                    const preSiteStart = member.preSiteOvertime.startTime;
+                    const preSiteEnd = member.preSiteOvertime.endTime;
+                    const preSiteBreakStart = member.preSiteOvertime.breakStart;
+                    const preSiteBreakEnd = member.preSiteOvertime.breakEnd;
+
+                    if (preSiteStart && preSiteEnd) {
+                        const [startH, startM] = preSiteStart.split(':').map(Number);
+                        const [endH, endM] = preSiteEnd.split(':').map(Number);
+                        let startMins = startH * 60 + startM;
+                        let endMins = endH * 60 + endM;
+                        if (endH < startH) endMins += 24 * 60; // 翌日
+
+                        const totalMins = endMins - startMins;
+                        preSiteGrossHours = Math.round((totalMins / 60) * 10) / 10;
+
+                        // 休憩時間を引く
+                        let netMins = totalMins;
+                        if (preSiteBreakStart && preSiteBreakEnd) {
+                            const [bStartH, bStartM] = preSiteBreakStart.split(':').map(Number);
+                            const [bEndH, bEndM] = preSiteBreakEnd.split(':').map(Number);
+                            const breakMins = (bEndH * 60 + bEndM) - (bStartH * 60 + bStartM);
+                            preSiteBreakMinutes = breakMins;
+                            netMins -= breakMins;
+                        }
+                        preSiteNetHours = Math.round((netMins / 60) * 10) / 10;
+                    }
+                }
+
+                // 2. 現場残業（出発～帰社の全時間）
+                let siteGrossHours = 0; // 休憩込み
+                let siteNetHours = 0; // 休憩抜き
+
+                // 現場での休憩時間（ユーザー入力値）
+                const siteBreakMinutes = member.breakTime || 0;
+
+                // 出発～帰社の全時間
+                // 直帰の場合は現場終了時間までを計算対象とする
+                let calcEndTimeMins = returnMins;
+                if (member.directReturn && siteLeaveMins >= 0) {
+                    calcEndTimeMins = siteLeaveMins;
+                }
+
+                if (departureMins >= 0 && calcEndTimeMins >= 0) {
+                    const totalMins = calcEndTimeMins - departureMins;
+                    siteGrossHours = Math.round((totalMins / 60) * 10) / 10;
+
+                    // 休憩時間を引く
+                    let netMins = totalMins;
+                    if (siteBreakMinutes > 0) {
+                        netMins -= siteBreakMinutes;
+                    }
+                    siteNetHours = Math.round((netMins / 60) * 10) / 10;
+                }
+
+                // 3. 合計
+                const totalGrossHours = Math.round((preSiteGrossHours + siteGrossHours) * 10) / 10;
+                const totalNetHours = Math.round((preSiteNetHours + siteNetHours) * 10) / 10;
+
+                // --- バー生成 ---
                 const createBar = (start, end, color) => {
                     if (start < 0 || end < 0 || start >= end) return '';
                     const left = (start / totalMinutes) * 100;
@@ -396,23 +542,32 @@
                     return `<div style="position: absolute; left: ${left}%; width: ${width}%; top: 2px; bottom: 2px; background-color: ${color}; z-index: 1;"></div>`;
                 };
 
-                // 工場/事務所行のバー
+                // 工場/事務所行のバー: 現場前残業
                 let factoryBars = '';
-                // 行き: 出発 -> 作業開始
-                if (departureMins >= 0 && workStartMins >= 0) {
-                    factoryBars += createBar(departureMins, workStartMins, '#FFD700');
-                }
-                // 帰り: 現場終了 -> 帰社
-                if (siteLeaveMins >= 0 && returnMins >= 0) {
-                    factoryBars += createBar(siteLeaveMins, returnMins, '#FFD700');
+                if (member.preSiteOvertime && member.preSiteOvertime.hasOvertime) {
+                    const preSiteStartMins = timeToMinutes(member.preSiteOvertime.startTime);
+                    const preSiteEndMins = timeToMinutes(member.preSiteOvertime.endTime);
+                    if (preSiteStartMins >= 0 && preSiteEndMins >= 0) {
+                        factoryBars += createBar(preSiteStartMins, preSiteEndMins, '#FFA500'); // オレンジ色
+                    }
                 }
 
-                // 現場行のバー
+                // 現場行のバー: 出発〜帰社全般
                 let siteBars = '';
-                // 作業: 作業開始 -> 現場終了
+
+                // 1. 出発 -> 作業開始 (#FFD700)
+                if (departureMins >= 0 && workStartMins >= 0) {
+                    siteBars += createBar(departureMins, workStartMins, '#FFD700');
+                }
+                // 2. 作業: 作業開始 -> 現場終了 (#FFD700)
                 if (workStartMins >= 0 && siteLeaveMins >= 0) {
                     siteBars += createBar(workStartMins, siteLeaveMins, '#FFD700');
                 }
+                // 3. 現場終了 -> 帰社 (直帰でない場合のみ) (#FFD700)
+                if (!member.directReturn && siteLeaveMins >= 0 && returnMins >= 0) {
+                    siteBars += createBar(siteLeaveMins, returnMins, '#FFD700');
+                }
+
                 // 休憩: 休憩開始 -> 休憩終了 (緑色、z-indexを上げて上に重ねる)
                 if (breakStartMins >= 0 && breakEndMins >= 0) {
                     // 休憩バーはz-index: 2で上に表示
@@ -428,12 +583,40 @@
                     gridLines += `<div style="position: absolute; left: ${left}%; top: 0; bottom: 0; border-left: 1px solid #ccc; z-index: 0;"></div>`;
                 }
 
+                // 情報表示用文字列作成
+                let timeInfo = `<span style="font-weight: bold; width: 100px; font-size: 11px;">名前 ${member.name}</span>`;
+
+                // 直帰表示
+                if (member.directReturn) {
+                    timeInfo += `<span style="margin-left: 5px; font-size: 10px; color: #d9534f; border: 1px solid #d9534f; padding: 0 2px; border-radius: 2px;">直帰</span>`;
+                }
+
+                // 現場前残業
+                if (preSiteGrossHours > 0) {
+                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場前残業${preSiteGrossHours}h</span>`;
+                    if (preSiteBreakMinutes > 0) {
+                        timeInfo += `<span style="margin-left: 2px; font-size: 10px;">(休${preSiteBreakMinutes}分)</span>`;
+                    }
+                    timeInfo += `<span style="margin-left: 2px; font-size: 10px;">抜${preSiteNetHours}h</span>`;
+                }
+
+                // 現場残業
+                if (siteGrossHours > 0) {
+                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場残業${siteGrossHours}h</span>`;
+                    if (siteBreakMinutes > 0) {
+                        timeInfo += `<span style="margin-left: 2px; font-size: 10px;">(休${siteBreakMinutes}分)</span>`;
+                    }
+                    timeInfo += `<span style="margin-left: 2px; font-size: 10px;">抜${siteNetHours}h</span>`;
+                }
+
+                // 合計
+                timeInfo += `<span style="margin-left: 10px; font-size: 11px; font-weight: bold;">合計${totalGrossHours}h(抜${totalNetHours}h)</span>`;
+
+
                 memberTimelines += `
                     <div style="margin-bottom: 25px; page-break-inside: avoid;">
-                        <div style="display: flex; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 5px;">
-                            <span style="font-weight: bold; width: 120px; font-size: 12px;">名前 ${member.name}</span>
-                            <span style="margin-left: 15px; font-size: 11px;">休憩時間 計_${breakTime}_分</span>
-                            <span style="margin-left: 30px; font-size: 11px;">残業時間計_${overtime}_h</span>
+                        <div style="display: flex; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 5px; flex-wrap: wrap;">
+                            ${timeInfo}
                         </div>
                         
                         <div style="display: flex; align-items: center; height: 22px; border-bottom: 1px solid #000;">

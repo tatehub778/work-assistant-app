@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>夜勤申請シート</title>
+    <title>夜勤報告作成 (v1.1)</title>
     <link rel="stylesheet" href="../css/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -269,13 +269,14 @@
                         draft.members.forEach((member, index) => {
                             const nameInput = document.querySelectorAll('.member-name')[index];
                             const breakInput = document.querySelectorAll('.member-break')[index];
-                            const overtimeInput = document.querySelectorAll('.member-overtime')[index];
+                            const siteStartInput = document.querySelectorAll('.member-site-start')[index];
+                            const siteEndInput = document.querySelectorAll('.member-site-end')[index];
                             const breakStartInput = document.querySelectorAll('.member-break-start')[index];
                             const breakEndInput = document.querySelectorAll('.member-break-end')[index];
 
                             if (nameInput) nameInput.value = member.name || '';
-                            if (breakInput) breakInput.value = member.breakTime || 0;
-                            if (overtimeInput) overtimeInput.value = member.overtime || 0;
+                            if (siteStartInput) siteStartInput.value = member.siteStart || document.getElementById('workStartTime').value || '';
+                            if (siteEndInput) siteEndInput.value = member.siteEnd || document.getElementById('siteLeaveTime').value || '';
                             if (breakStartInput) breakStartInput.value = member.breakStart || '';
                             if (breakEndInput) breakEndInput.value = member.breakEnd || '';
 
@@ -326,15 +327,21 @@
                         <label>名前</label>
                         <input type="text" class="member-name" placeholder="例: 田中" required>
                     </div>
+
+                    <div style="margin-bottom: 15px;">
+                         <label style="cursor: pointer; display: inline-flex; align-items: center;">
+                            <input type="checkbox" class="member-direct-return" style="margin-right: 5px;"> 直帰
+                        </label>
+                    </div>
                     
                     <div style="display: flex; gap: 10px;">
                         <div style="flex: 1;">
-                            <label>休憩時間（分）</label>
-                            <input type="number" class="member-break" min="0" value="0" placeholder="例: 60">
+                            <label>現場開始</label>
+                            <input type="time" class="member-site-start">
                         </div>
                         <div style="flex: 1;">
-                            <label>残業時間（時間）</label>
-                            <input type="number" class="member-overtime" min="0" step="0.5" value="0" placeholder="例: 2">
+                            <label>現場終了</label>
+                            <input type="time" class="member-site-end">
                         </div>
                     </div>
 
@@ -388,6 +395,12 @@
                 `;
 
                 container.appendChild(memberDiv);
+
+                // デフォルト値をセット
+                const startInputs = memberDiv.querySelectorAll('.member-site-start');
+                const endInputs = memberDiv.querySelectorAll('.member-site-end');
+                if (startInputs.length > 0) startInputs[0].value = document.getElementById('workStartTime').value;
+                if (endInputs.length > 0) endInputs[0].value = document.getElementById('siteLeaveTime').value;
             }
         }
 
@@ -407,10 +420,13 @@
         function collectFormData(status) {
             const members = [];
             const memberNames = document.querySelectorAll('.member-name');
-            const memberBreaks = document.querySelectorAll('.member-break');
-            const memberOvertimes = document.querySelectorAll('.member-overtime');
+            // const memberBreaks = document.querySelectorAll('.member-break'); // 廃止
+            const memberSiteStarts = document.querySelectorAll('.member-site-start');
+            const memberSiteEnds = document.querySelectorAll('.member-site-end');
+            const memberDirectReturns = document.querySelectorAll('.member-direct-return');
             const memberBreakStarts = document.querySelectorAll('.member-break-start');
             const memberBreakEnds = document.querySelectorAll('.member-break-end');
+
             const preSiteCheckboxes = document.querySelectorAll('.member-preSite-checkbox');
             const preSiteLocations = document.querySelectorAll('.member-preSite-location');
             const preSiteStarts = document.querySelectorAll('.member-preSite-start');
@@ -428,13 +444,24 @@
                     breakEnd: preSiteBreakEnds[index].value
                 } : { hasOvertime: false };
 
+                // 休憩時間の自動計算
+                let calculatedBreakTime = 0;
+                const bStart = memberBreakStarts[index].value;
+                const bEnd = memberBreakEnds[index].value;
+                if (bStart && bEnd) {
+                    const diff = timeToMinutes(bEnd) - timeToMinutes(bStart);
+                    if (diff > 0) calculatedBreakTime = diff;
+                }
+
                 members.push({
                     name: nameInput.value,
-                    breakTime: parseInt(memberBreaks[index].value) || 0,
-                    overtime: parseFloat(memberOvertimes[index].value) || 0,
+                    breakTime: calculatedBreakTime, // 自動計算値を使用
+                    siteStart: memberSiteStarts[index].value,
+                    siteEnd: memberSiteEnds[index].value,
                     breakStart: memberBreakStarts[index].value,
                     breakEnd: memberBreakEnds[index].value,
-                    preSiteOvertime: preSiteOvertime
+                    preSiteOvertime: preSiteOvertime,
+                    directReturn: memberDirectReturns[index] ? memberDirectReturns[index].checked : false
                 });
             });
 
@@ -467,32 +494,124 @@
                 lineText += `管理番号: ${data.managementNumber}\n`;
             }
 
-            lineText += `日付: ${formatDate(data.shiftDate)}\n現場: ${data.siteName}\n`;
+            lineText += `日付: ${formatDate(data.shiftDate)}\n`;
+            lineText += `現場: ${data.siteName}\n`;
+            lineText += `管理者: ${data.supervisor}\n`; // 管理者を追加
 
-            // メンバー別現場前残業
-            const overtimeMembers = data.members.filter(m => m.preSiteOvertime && m.preSiteOvertime.hasOvertime);
-            if (overtimeMembers.length > 0) {
-                lineText += `\n【現場前残業】\n`;
-                overtimeMembers.forEach(member => {
-                    const ot = member.preSiteOvertime;
-                    lineText += `${member.name}: ${ot.location} ${ot.startTime}〜${ot.endTime}`;
-                    if (ot.breakStart && ot.breakEnd) {
-                        lineText += ` (休憩: ${ot.breakStart}〜${ot.breakEnd})`;
+            if (data.status === 'pre-departure' || data.status === 'draft') {
+                // 出発前（簡易フォーマット）
+                lineText += `作業予定時間: ${data.workStartTime} 〜 ${data.siteLeaveTime}\n`;
+
+                const memberNames = data.members.map(m => m.name).join('、');
+                lineText += `作業予定者: ${memberNames}`;
+            } else {
+                // 最終（詳細フォーマット）
+                lineText += `\n【作業詳細】\n`;
+
+                data.members.forEach(m => {
+                    // 時間計算 (詳細ロジック)
+                    let preSiteGrossHours = 0;
+                    let preSiteNetHours = 0;
+                    let preSiteBreakMinutes = 0;
+
+                    if (m.preSiteOvertime && m.preSiteOvertime.hasOvertime) {
+                        const preStart = m.preSiteOvertime.startTime;
+                        const preEnd = m.preSiteOvertime.endTime;
+                        if (preStart && preEnd) {
+                            const [sH, sM] = preStart.split(':').map(Number);
+                            const [eH, eM] = preEnd.split(':').map(Number);
+                            let sMins = sH * 60 + sM;
+                            let eMins = eH * 60 + eM;
+                            if (eH < sH) eMins += 24 * 60;
+                            const totalMins = eMins - sMins;
+
+                            preSiteGrossHours = Math.round((totalMins / 60) * 10) / 10;
+
+                            let netMins = totalMins;
+                            if (m.preSiteOvertime.breakStart && m.preSiteOvertime.breakEnd) {
+                                const [bsH, bsM] = m.preSiteOvertime.breakStart.split(':').map(Number);
+                                const [beH, beM] = m.preSiteOvertime.breakEnd.split(':').map(Number);
+                                const bMins = (beH * 60 + beM) - (bsH * 60 + bsM);
+                                preSiteBreakMinutes = bMins;
+                                netMins -= bMins;
+                            }
+                            preSiteNetHours = Math.round((netMins / 60) * 10) / 10;
+                        }
                     }
+
+                    let siteGrossHours = 0;
+                    let siteNetHours = 0;
+                    const siteBreakMinutes = parseInt(m.breakTime) || 0;
+
+                    // 現場時間計算（メンバーごとの入力値を使用）
+                    const siteStartMins = timeToMinutes(m.siteStart);
+
+                    // 現場終了時刻（直帰の場合はそちらを優先、または入力値）
+                    // ここでは入力された siteEnd を正とし、直帰の場合はそれが帰る時間でもあるとする
+                    const siteEndMinsVal = timeToMinutes(m.siteEnd);
+
+                    if (siteStartMins >= 0 && siteEndMinsVal >= 0) {
+                        let endM = siteEndMinsVal;
+                        // 日跨ぎ対応
+                        // timeToMinutesの実装依存だが、通常 timeToMinutes は 17:00起点の分数を返す。
+                        // 入力が "05:00" なら翌日扱いになっているはず。
+                        // ただし、もし siteStart < siteEnd という単純比較で逆転していたら翌日加算が必要か確認
+                        // timeToMinutes内で 12:00より前は+24hしているため、基本的には大小比較でOK
+                        if (endM < siteStartMins) {
+                            // もし何らかの理由で逆転していたら補正（通常ありえないが念のため）
+                            // ここでは timeToMinutes が正しく処理していると信じる
+                        }
+
+                        const totalMins = endM - siteStartMins;
+                        siteGrossHours = Math.round((totalMins / 60) * 10) / 10;
+                        const netMins = totalMins - siteBreakMinutes;
+                        siteNetHours = Math.round((netMins / 60) * 10) / 10;
+                    }
+
+                    const totalGross = Math.round((preSiteGrossHours + siteGrossHours) * 10) / 10;
+                    const totalNet = Math.round((preSiteNetHours + siteNetHours) * 10) / 10;
+
+                    // テキスト生成
+                    lineText += `・${m.name}`;
+                    if (m.directReturn) lineText += ` (直帰)`;
+
+                    let parts = [];
+
+                    // 現場前
+                    if (preSiteGrossHours > 0) {
+                        let str = `現場前残業${preSiteGrossHours}h`;
+                        if (preSiteGrossHours !== preSiteNetHours) {
+                            str += `(休憩抜き${preSiteNetHours}h)`;
+                        }
+                        if (preSiteBreakMinutes > 0) {
+                            str += `、休憩${preSiteBreakMinutes}分`;
+                        }
+                        parts.push(str);
+                    }
+
+                    // 現場
+                    if (siteGrossHours > 0) {
+                        let str = `現場残業${siteGrossHours}h`;
+                        if (siteGrossHours !== siteNetHours) {
+                            str += `(休憩抜き${siteNetHours}h)`;
+                        }
+                        if (siteBreakMinutes > 0) {
+                            str += `、休憩${siteBreakMinutes}分`;
+                        }
+                        parts.push(str);
+                    }
+
+                    if (parts.length > 0) {
+                        lineText += ` ` + parts.join('、');
+                        lineText += `、残業時間計${totalGross}h(休憩抜き${totalNet}h)`;
+                    }
+
                     lineText += `\n`;
                 });
-            }
 
-            lineText += `\n【現場作業】\n`;
-            lineText += `時間: ${data.workStartTime} 〜 ${data.siteLeaveTime}\n`;
-            lineText += `作業内容: ${data.workContent}\n`;
-            lineText += `メンバー:\n`;
-            data.members.forEach(m => {
-                lineText += `  ${m.name}: 残業${m.overtime}h\n`;
-            });
-
-            if (data.notes) {
-                lineText += `\n備考: ${data.notes}`;
+                if (data.notes) {
+                    lineText += `\n備考: ${data.notes}`;
+                }
             }
 
             return lineText;
@@ -541,8 +660,9 @@
                 const breakEndMins = timeToMinutes(member.breakEnd);
 
                 // 現場前残業の時間計算
-                let preSiteOvertimeHours = 0;
-                let preSiteBreakMinutes = 0;
+                let preSiteGross = 0;
+                let preSiteNet = 0;
+                let preSiteBreak = 0;
 
                 if (member.preSiteOvertime && member.preSiteOvertime.hasOvertime) {
                     const preSiteStart = member.preSiteOvertime.startTime;
@@ -557,29 +677,43 @@
                         let endMins = endH * 60 + endM;
                         if (endH < startH) endMins += 24 * 60; // 翌日
 
-                        let totalMins = endMins - startMins;
+                        const totalMins = endMins - startMins;
+                        preSiteGross = Math.round((totalMins / 60) * 10) / 10;
+
+                        let netMins = totalMins;
 
                         // 休憩時間を引く
                         if (preSiteBreakStart && preSiteBreakEnd) {
                             const [bStartH, bStartM] = preSiteBreakStart.split(':').map(Number);
                             const [bEndH, bEndM] = preSiteBreakEnd.split(':').map(Number);
                             const breakMins = (bEndH * 60 + bEndM) - (bStartH * 60 + bStartM);
-                            preSiteBreakMinutes = breakMins;
-                            totalMins -= breakMins;
+                            preSiteBreak = breakMins;
+                            netMins -= breakMins;
                         }
-
-                        preSiteOvertimeHours = Math.round((totalMins / 60) * 10) / 10;
+                        preSiteNet = Math.round((netMins / 60) * 10) / 10;
                     }
                 }
 
-                // 現場での実残業時間（ユーザー入力値）
-                const siteOvertimeHours = member.overtime || 0;
+                // (削除) const totalOvertimeHours ... まだ siteGross が未定義のためエラーになる。下で totalGross として計算しているため不要。
+                // 現場での時間計算
+                let siteGross = 0;
+                let siteNet = 0;
+                const siteBreak = parseInt(member.breakTime) || 0;
 
-                // 現場での休憩時間
-                const siteBreakMinutes = member.breakTime || 0;
+                // メンバーごとの現場開始・終了を使用
+                const mSiteStart = timeToMinutes(member.siteStart);
+                const mSiteEnd = timeToMinutes(member.siteEnd);
+
+                if (mSiteStart >= 0 && mSiteEnd >= 0) {
+                    const totalMins = mSiteEnd - mSiteStart; // timeToMinutesが日跨ぎ処理済み
+                    siteGross = Math.round((totalMins / 60) * 10) / 10;
+                    const netMins = totalMins - siteBreak;
+                    siteNet = Math.round((netMins / 60) * 10) / 10;
+                }
 
                 // 残業時間合計
-                const totalOvertimeHours = Math.round((preSiteOvertimeHours + siteOvertimeHours) * 10) / 10;
+                const totalGross = Math.round((preSiteGross + siteGross) * 10) / 10;
+                const totalNet = Math.round((preSiteNet + siteNet) * 10) / 10;
 
                 // バー生成関数
                 const createBar = (start, end, color) => {
@@ -589,31 +723,44 @@
                     return `<div style="position: absolute; left: ${left}%; width: ${width}%; top: 2px; bottom: 2px; background-color: ${color}; z-index: 1;"></div>`;
                 };
 
-                // 工場/事務所行のバー
+                // 工場/事務所行のバー: 現場前残業
                 let factoryBars = '';
-                // 現場前残業
                 if (member.preSiteOvertime && member.preSiteOvertime.hasOvertime) {
                     const preSiteStartMins = timeToMinutes(member.preSiteOvertime.startTime);
                     const preSiteEndMins = timeToMinutes(member.preSiteOvertime.endTime);
                     if (preSiteStartMins >= 0 && preSiteEndMins >= 0) {
-                        factoryBars += createBar(preSiteStartMins, preSiteEndMins, '#FFA500');
+                        factoryBars += createBar(preSiteStartMins, preSiteEndMins, '#FFA500'); // オレンジ色
                     }
-                }
-                // 行き: 出発 -> 作業開始
-                if (departureMins >= 0 && workStartMins >= 0) {
-                    factoryBars += createBar(departureMins, workStartMins, '#FFD700');
-                }
-                // 帰り: 現場終了 -> 帰社
-                if (siteLeaveMins >= 0 && returnMins >= 0) {
-                    factoryBars += createBar(siteLeaveMins, returnMins, '#FFD700');
                 }
 
                 // 現場行のバー
                 let siteBars = '';
-                // 作業: 作業開始 -> 現場終了
-                if (workStartMins >= 0 && siteLeaveMins >= 0) {
-                    siteBars += createBar(workStartMins, siteLeaveMins, '#FFD700');
+
+                // 1. 出発 -> 作業開始 (黄色)
+                // バー表示に関しては、全体スケジュール感を示すため Global Departure を使うか、各メンバーのSiteStartを使うか。
+                // ユーザーは「詳細時間」を求めているので、メンバー個別のSiteStartを使うべきだが、
+                // 移動時間(Departure->SiteStart)が不明になる。
+                // ここでは「現場作業」のバーをメンバー個別の Start-End で描画する。
+                // 移動については、今回は「Departure -> MemberSiteStart」と仮定して描画してみる。
+
+                // mSiteStart, mSiteEnd は上で計算済み
+
+                // 移動（行き）: Global Departure -> Member Site Start
+                if (departureMins >= 0 && mSiteStart >= 0) {
+                    siteBars += createBar(departureMins, mSiteStart, '#FFD700');
                 }
+
+                // 作業: Member Site Start -> Member Site End
+                if (mSiteStart >= 0 && mSiteEnd >= 0) {
+                    siteBars += createBar(mSiteStart, mSiteEnd, '#FFD700');
+                }
+
+                // 移動（帰り）: Member Site End -> Global Return (直帰でない場合)
+                if (!member.directReturn && mSiteEnd >= 0 && returnMins >= 0) {
+                    siteBars += createBar(mSiteEnd, returnMins, '#FFD700');
+                }
+
+                // (siteBars は上で定義済み)
                 // 休憩: 休憩開始 -> 休憩終了 (緑色、z-indexを上げて上に重ねる)
                 if (breakStartMins >= 0 && breakEndMins >= 0) {
                     const left = (breakStartMins / totalMinutes) * 100;
@@ -630,23 +777,31 @@
 
                 //  時間情報の表示
                 let timeInfo = `<span style="font-weight: bold; width: 100px; font-size: 11px;">名前 ${member.name}</span>`;
+                if (member.directReturn) {
+                    timeInfo += `<span style="margin-left: 5px; font-size: 10px; color: #d9534f; border: 1px solid #d9534f; padding: 0 2px; border-radius: 2px;">直帰</span>`;
+                }
 
-                if (preSiteOvertimeHours > 0) {
-                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場前残業 ${preSiteOvertimeHours}h</span>`;
-                    if (preSiteBreakMinutes > 0) {
-                        timeInfo += `<span style="margin-left: 5px; font-size: 10px;">現場前休憩 ${preSiteBreakMinutes}分</span>`;
+                if (preSiteGross > 0) {
+                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場前残業${preSiteGross}h</span>`;
+                    if (preSiteGross !== preSiteNet) {
+                        timeInfo += `<span style="font-size: 10px;">(休憩抜き${preSiteNet}h)</span>`;
+                    }
+                    if (preSiteBreak > 0) {
+                        timeInfo += `<span style="margin-left: 2px; font-size: 10px;">、休憩${preSiteBreak}分</span>`;
                     }
                 }
 
-                if (siteBreakMinutes > 0) {
-                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">休憩時間 ${siteBreakMinutes}分</span>`;
+                if (siteGross > 0) {
+                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場残業${siteGross}h</span>`;
+                    if (siteGross !== siteNet) {
+                        timeInfo += `<span style="font-size: 10px;">(休憩抜き${siteNet}h)</span>`;
+                    }
+                    if (siteBreak > 0) {
+                        timeInfo += `<span style="margin-left: 2px; font-size: 10px;">、休憩${siteBreak}分</span>`;
+                    }
                 }
 
-                if (siteOvertimeHours > 0) {
-                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場残業 ${siteOvertimeHours}h</span>`;
-                }
-
-                timeInfo += `<span style="margin-left: 10px; font-size: 11px; font-weight: bold;">残業時間計 ${totalOvertimeHours}h</span>`;
+                timeInfo += `<span style="margin-left: 10px; font-size: 11px; font-weight: bold;">残業時間計${totalGross}h(休憩抜き${totalNet}h)</span>`;
 
                 memberTimelines += `
                     <div style="margin-bottom: 25px; page-break-inside: avoid;">
@@ -736,74 +891,104 @@
 
         // プレビューボタン
         document.getElementById('previewBtn').addEventListener('click', async function () {
-            if (!document.getElementById('nightShiftForm').checkValidity()) {
-                alert('全ての必須項目を入力してください');
-                return;
+            try {
+                if (!document.getElementById('nightShiftForm').checkValidity()) {
+                    alert('全ての必須項目を入力してください');
+                    return;
+                }
+
+                const data = collectFormData('preview');
+                await generateTemplate(data);
+
+                document.getElementById('previewArea').style.display = 'block';
+                document.getElementById('saveFinal').style.display = 'block';
+                document.getElementById('generatePDFBtn').style.display = 'block';
+                document.getElementById('generatePNGBtn').style.display = 'block';
+
+                document.getElementById('previewArea').scrollIntoView({ behavior: 'smooth' });
+            } catch (e) {
+                console.error(e);
+                alert('プレビュー生成中にエラーが発生しました: ' + e.message);
             }
-
-            const data = collectFormData('preview');
-            await generateTemplate(data);
-
-            document.getElementById('previewArea').style.display = 'block';
-            document.getElementById('saveFinal').style.display = 'block';
-            document.getElementById('generatePDFBtn').style.display = 'block';
-            document.getElementById('generatePNGBtn').style.display = 'block';
-
-            document.getElementById('previewArea').scrollIntoView({ behavior: 'smooth' });
         });
 
         // 出発前保存
         document.getElementById('savePreDeparture').addEventListener('click', function () {
-            const data = collectFormData('pre-departure');
+            try {
+                const data = collectFormData('pre-departure');
 
-            // 下書きとして保存
-            if (currentDraftId) {
-                updateDraft(currentDraftId, data);
-            } else {
-                currentDraftId = saveDraft(data);
-            }
+                // 下書きとして保存
+                if (currentDraftId) {
+                    updateDraft(currentDraftId, data);
+                } else {
+                    currentDraftId = saveDraft(data);
+                }
 
-            const lineText = generateLineText(data);
+                const lineText = generateLineText(data);
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(lineText)
-                    .then(() => {
-                        showCopySuccess();
-                        document.getElementById('instructionBox').style.display = 'block';
-                        document.getElementById('instructionBox').scrollIntoView({ behavior: 'smooth' });
-                    })
-                    .catch(err => {
-                        alert('コピーに失敗しました');
-                    });
-            } else {
-                alert('この機能はHTTPS環境で使用できます');
+                // クリップボードコピー
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(lineText)
+                        .then(() => {
+                            showCopySuccess();
+                            document.getElementById('instructionBox').style.display = 'block';
+                            document.getElementById('instructionBox').scrollIntoView({ behavior: 'smooth' });
+
+                            // LINEアプリ起動 (PCでも試行)
+                            window.location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(lineText);
+                        })
+                        .catch(err => {
+                            alert('コピーに失敗しました: ' + err);
+                            // コピー失敗してもLINEは開く
+                            window.location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(lineText);
+                        });
+                } else {
+                    // 非HTTPSなど
+                    alert('クリップボードへのコピーはHTTPS環境が必要です。LINE起動のみ試みます。');
+                    window.location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(lineText);
+                }
+            } catch (e) {
+                console.error(e);
+                alert('エラーが発生しました: ' + e.message);
             }
         });
 
         // 最終保存
         document.getElementById('saveFinal').addEventListener('click', function () {
-            const data = collectFormData('final');
-            saveData(STORAGE_KEYS.NIGHT_SHIFTS, data);
+            try {
+                const data = collectFormData('final');
+                saveData(STORAGE_KEYS.NIGHT_SHIFTS, data);
 
-            // 下書きを削除
-            if (currentDraftId) {
-                deleteDraft(currentDraftId);
-                currentDraftId = null;
-            }
+                // 下書きを削除
+                if (currentDraftId) {
+                    deleteDraft(currentDraftId);
+                    currentDraftId = null;
+                }
 
-            const lineText = generateLineText(data);
+                const lineText = generateLineText(data);
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(lineText)
-                    .then(() => {
-                        showCopySuccess();
-                        alert('✅ 最終保存しました！LINE用テキストをコピーしました。');
-                    })
-                    .catch(err => {
-                        alert('コピーに失敗しました');
-                    });
-            } else {
-                alert('この機能はHTTPS環境で使用できます');
+                // クリップボードコピー
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(lineText)
+                        .then(() => {
+                            showCopySuccess();
+                            alert('✅ 最終保存しました！LINE用テキストをコピーしました。');
+
+                            // LINEアプリ起動 (PCでも試行)
+                            window.location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(lineText);
+                        })
+                        .catch(err => {
+                            alert('コピーに失敗しました: ' + err);
+                            // コピー失敗してもLINEは開く
+                            window.location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(lineText);
+                        });
+                } else {
+                    alert('クリップボードへのコピーはHTTPS環境が必要です。LINE起動のみ試みます。');
+                    window.location.href = 'https://line.me/R/msg/text/?' + encodeURIComponent(lineText);
+                }
+            } catch (e) {
+                console.error(e);
+                alert('エラーが発生しました: ' + e.message);
             }
         });
 
