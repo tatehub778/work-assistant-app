@@ -1,4 +1,4 @@
-const CACHE_NAME = 'work-assistant-v2';
+const CACHE_NAME = 'work-assistant-v3';
 const urlsToCache = [
     '/',
     '/index.html',
