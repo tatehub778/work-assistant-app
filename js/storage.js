@@ -134,7 +134,7 @@ function saveDraft(data) {
             id: Date.now(),
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            status: 'draft' // または 'completed'
+            status: data.status || 'draft' // 提供されたステータスを使用、なければ 'draft'
         };
         drafts.push(draft);
         localStorage.setItem(STORAGE_KEYS.NIGHT_SHIFT_DRAFTS, JSON.stringify(drafts));
