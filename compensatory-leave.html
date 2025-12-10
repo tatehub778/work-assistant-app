@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>代休申請</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">📅 代休申請</h1>
+
+            <form id="compensatoryLeaveForm">
+                <div class="form-group">
+                    <label for="leaveDate">代休取得希望日</label>
+                    <input type="date" id="leaveDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="workDate">元の出勤日（休日出勤日）</label>
+                    <input type="date" id="workDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="note">備考（任意）</label>
+                    <textarea id="note" rows="3" placeholder="特記事項があれば入力してください"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary">📋 LINEグループに投稿</button>
+                <button type="button" class="btn btn-secondary" id="saveOnly">💾 保存のみ</button>
+                <a href="../index.html" class="btn btn-back">戻る</a>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // 今日の日付をデフォルト設定
+        document.getElementById('leaveDate').valueAsDate = new Date();
+
+        // フォーム送信（LINEに投稿）
+        document.getElementById('compensatoryLeaveForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const leaveDate = document.getElementById('leaveDate').value;
+            const workDate = document.getElementById('workDate').value;
+            const note = document.getElementById('note').value;
+
+            const data = {
+                leaveDate: leaveDate,
+                workDate: workDate,
+                note: note,
+                category: '代休申請'
+            };
+
+            // データを保存
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+
+            // LINE投稿用テキスト生成
+            let lineText = `【代休申請】\n代休取得日: ${formatDate(leaveDate)}\n休日出勤日: ${formatDate(workDate)}`;
+
+            if (note) {
+                lineText += `\n備考: ${note}`;
+            }
+
+            // LINEにコピーして開く
+            copyToLineAndOpen(lineText);
+
+            // フォームをリセット
+            setTimeout(() => {
+                this.reset();
+                document.getElementById('leaveDate').valueAsDate = new Date();
+            }, 1000);
+        });
+
+        // 保存のみ
+        document.getElementById('saveOnly').addEventListener('click', function () {
+            const leaveDate = document.getElementById('leaveDate').value;
+            const workDate = document.getElementById('workDate').value;
+            const note = document.getElementById('note').value;
+
+            if (!leaveDate || !workDate) {
+                alert('日付を入力してください');
+                return;
+            }
+
+            const data = {
+                leaveDate: leaveDate,
+                workDate: workDate,
+                note: note,
+                category: '代休申請'
+            };
+
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+            alert('✅ データを保存しました');
+
+            document.getElementById('compensatoryLeaveForm').reset();
+            document.getElementById('leaveDate').valueAsDate = new Date();
+        });
+    </script>
+</body>
+
+</html>

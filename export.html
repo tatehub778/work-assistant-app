@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV出力</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">💾 CSV出力</h1>
+
+            <div class="alert alert-info">
+                📌 CBO（クラフトバンクオフィス）への入力用にデータをCSV形式でダウンロードできます
+            </div>
+
+            <div style="padding: 20px; background: #f8f9fa; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">🔍 出力条件</h3>
+
+                <div class="form-group">
+                    <label for="exportUser">👤 社員で絞り込み</label>
+                    <select id="exportUser">
+                        <option value="all">全員</option>
+                        <!-- JavaScriptで動的生成 -->
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="exportCategory">📋 出力するカテゴリー</label>
+                    <select id="exportCategory">
+                        <option value="all">全てのデータ</option>
+                        <option value="attendance">勤怠データのみ（遅刻/早退/有給/代休）</option>
+                        <option value="work">作業データのみ（作業報告/夜勤申請/メンバー指示）</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="exportDateFrom">📅 期間（開始日）</label>
+                    <input type="date" id="exportDateFrom" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="exportDateTo">📅 期間（終了日）</label>
+                    <input type="date" id="exportDateTo" required>
+                </div>
+            </div>
+
+            <div
+                style="padding: 20px; background: #e3f2fd; border-radius: 12px; margin-bottom: 20px; border: 1px solid #90caf9;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">📦 バックアップ・復元</h3>
+                <p style="font-size: 0.9em; color: #555; margin-bottom: 15px;">
+                    プライベートブラウザを使用している場合や、別の端末にデータを移行する場合に使用します。
+                </p>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                    <button type="button" class="btn" style="background-color: #0288d1; color: white; flex: 1;"
+                        id="downloadBackupBtn">
+                        ⬇️ バックアップを保存
+                    </button>
+                    <button type="button" class="btn" style="background-color: #7b1fa2; color: white; flex: 1;"
+                        onclick="document.getElementById('restoreFile').click()">
+                        ⬆️ データを復元
+                    </button>
+                    <input type="file" id="restoreFile" accept=".json" style="display: none;">
+                </div>
+                <p style="font-size: 0.8em; color: #666;">※「データを復元」すると、現在のデータに上書き・追加されます。</p>
+            </div>
+
+            <div id="recordInfo" class="alert alert-warning" style="display: none;">
+                <!-- 件数情報を表示 -->
+            </div>
+
+            <button type="button" class="btn btn-primary" id="exportBtn">📥 CSVダウンロード</button>
+            <button type="button" class="btn btn-secondary" id="previewBtn">👁️ データをプレビュー</button>
+            <a href="../index.html" class="btn btn-back">戻る</a>
+
+            <div id="previewArea" style="display: none; margin-top: 30px;">
+                <h3>プレビュー</h3>
+                <div style="overflow-x: auto;">
+                    <table class="table" id="previewTable">
+                        <!-- JavaScriptで動的生成 -->
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // デフォルトで今月の範囲を設定
+        const today = new Date();
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+        document.getElementById('exportDateFrom').valueAsDate = firstDayOfMonth;
+        document.getElementById('exportDateTo').valueAsDate = lastDayOfMonth;
+
+        // ユーザーリストを構築
+        function buildUserFilter() {
+            const allData = [
+                ...getData(STORAGE_KEYS.ATTENDANCE),
+                ...getData(STORAGE_KEYS.WORK_REPORTS),
+                ...getData(STORAGE_KEYS.NIGHT_SHIFTS),
+                ...getData(STORAGE_KEYS.TEAM_INSTRUCTIONS)
+            ];
+            const users = new Set();
+
+            allData.forEach(record => {
+                if (record.userName) {
+                    users.add(record.userName);
+                }
+            });
+
+            const select = document.getElementById('exportUser');
+            select.innerHTML = '<option value="all">全員</option>';
+
+            Array.from(users).sort().forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                select.appendChild(option);
+            });
+        }
+
+        function getDataForDateRange(startDate, endDate) {
+            const allData = [
+                ...getData(STORAGE_KEYS.ATTENDANCE),
+                ...getData(STORAGE_KEYS.WORK_REPORTS),
+                ...getData(STORAGE_KEYS.NIGHT_SHIFTS),
+                ...getData(STORAGE_KEYS.TEAM_INSTRUCTIONS)
+            ];
+
+            const fromDate = new Date(startDate);
+            const toDate = new Date(endDate);
+
+            return allData.filter(item => {
+                const itemDate = new Date(item.timestamp);
+                const itemDateOnly = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
+                return itemDateOnly >= fromDate && itemDateOnly <= toDate;
+            });
+        }
+
+        function prepareCSVData(records, category, userName) {
+            const csvData = [];
+
+            records.forEach(record => {
+                // カテゴリーフィルター
+                if (category === 'attendance') {
+                    if (!['遅刻早退', '有給申請', '代休申請'].includes(record.category)) {
+                        return;
+                    }
+                } else if (category === 'work') {
+                    if (!['作業報告', '夜勤申請', '夜勤メンバー指示'].includes(record.category)) {
+                        return;
+                    }
+                }
+
+                // ユーザーフィルター
+                if (userName !== 'all' && record.userName !== userName) {
+                    return;
+                }
+
+                const row = {
+                    '登録日時': new Date(record.timestamp).toLocaleString('ja-JP'),
+                    'ユーザー名': record.userName || '未設定',
+                    'カテゴリー': record.category,
+                    '日付': '',
+                    '内容': '',
+                    '詳細': ''
+                };
+
+                switch (record.category) {
+                    case '遅刻早退':
+                        row['日付'] = formatDate(record.date);
+                        row['内容'] = `${record.type} ${record.minutes}分`;
+                        row['詳細'] = record.reason;
+                        break;
+
+                    case '有給申請':
+                        row['日付'] = formatDate(record.startDate);
+                        row['内容'] = `${record.days}日`;
+                        row['詳細'] = record.reason;
+                        break;
+
+                    case '代休申請':
+                        row['日付'] = formatDate(record.leaveDate);
+                        row['内容'] = `休日出勤日: ${formatDate(record.workDate)}`;
+                        row['詳細'] = record.note || '';
+                        break;
+
+                    case '作業報告':
+                        row['日付'] = formatDate(record.workDate);
+                        row['内容'] = record.siteName;
+                        row['詳細'] = record.workContent;
+                        break;
+
+                    case '夜勤申請':
+                        row['日付'] = formatDate(record.shiftDate);
+                        row['内容'] = `${record.siteName} (${record.startTime}〜${record.endTime})`;
+                        row['詳細'] = `${record.workContent} / メンバー: ${record.members}`;
+                        break;
+
+                    case '夜勤メンバー指示':
+                        row['日付'] = formatDate(record.date);
+                        row['内容'] = `${record.instructions.length}名`;
+                        row['詳細'] = record.instructions.map(i =>
+                            `${i.member}(早出${i.early}h/残業${i.overtime}h)`
+                        ).join(', ');
+                        break;
+                }
+
+                csvData.push(row);
+            });
+
+            return csvData;
+        }
+
+        // プレビュー表示
+        document.getElementById('previewBtn').addEventListener('click', function () {
+            const startDate = document.getElementById('exportDateFrom').value;
+            const endDate = document.getElementById('exportDateTo').value;
+            const category = document.getElementById('exportCategory').value;
+            const userName = document.getElementById('exportUser').value;
+
+            if (!startDate || !endDate) {
+                alert('開始日と終了日を選択してください');
+                return;
+            }
+
+            const records = getDataForDateRange(startDate, endDate);
+            const csvData = prepareCSVData(records, category, userName);
+
+            if (csvData.length === 0) {
+                alert('該当するデータがありません');
+                document.getElementById('previewArea').style.display = 'none';
+                return;
+            }
+
+            // 情報表示
+            document.getElementById('recordInfo').style.display = 'block';
+            document.getElementById('recordInfo').textContent = `${csvData.length}件のデータが見つかりました`;
+
+            // テーブル生成
+            const table = document.getElementById('previewTable');
+            table.innerHTML = '';
+
+            // ヘッダー
+            const thead = table.createTHead();
+            const headerRow = thead.insertRow();
+            const headers = ['登録日時', 'ユーザー名', 'カテゴリー', '日付', '内容', '詳細'];
+            headers.forEach(header => {
+                const th = document.createElement('th');
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+
+            // データ行
+            const tbody = table.createTBody();
+            csvData.forEach(data => {
+                const row = tbody.insertRow();
+                headers.forEach(header => {
+                    const cell = row.insertCell();
+                    cell.textContent = data[header];
+                });
+            });
+
+            document.getElementById('previewArea').style.display = 'block';
+            document.getElementById('previewArea').scrollIntoView({ behavior: 'smooth' });
+        });
+
+        // CSV出力
+        document.getElementById('exportBtn').addEventListener('click', function () {
+            const startDate = document.getElementById('exportDateFrom').value;
+            const endDate = document.getElementById('exportDateTo').value;
+            const category = document.getElementById('exportCategory').value;
+            const userName = document.getElementById('exportUser').value;
+
+            if (!startDate || !endDate) {
+                alert('開始日と終了日を選択してください');
+                return;
+            }
+
+            const records = getDataForDateRange(startDate, endDate);
+            const csvData = prepareCSVData(records, category, userName);
+
+            if (csvData.length === 0) {
+                alert('該当するデータがありません');
+                return;
+            }
+
+            // CSVに変換
+            const headers = ['登録日時', 'ユーザー名', 'カテゴリー', '日付', '内容', '詳細'];
+            const csvContent = convertToCSV(csvData, headers);
+
+            // ファイル名生成
+            let filename = '業務データ';
+            if (userName !== 'all') {
+                filename += `_${userName}`;
+            }
+            filename += `_${startDate}_${endDate}.csv`;
+
+            // ダウンロード
+            downloadCSV(csvContent, filename);
+
+            alert(`✅ ${csvData.length}件のデータをダウンロードしました`);
+        });
+
+        // 初期化
+        buildUserFilter();
+        // バックアップダウンロード
+        document.getElementById('downloadBackupBtn').addEventListener('click', function () {
+            const jsonString = exportAllData();
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `work_assistant_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // データ復元
+        document.getElementById('restoreFile').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!confirm('現在のデータにバックアップデータを上書き・追加しますか？\n※この操作は取り消せません。')) {
+                e.target.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const result = importData(e.target.result);
+                if (result.success) {
+                    alert(`✅ 復元が完了しました\n(データ件数: ${result.count}件)`);
+                    location.reload();
+                } else {
+                    alert(`❌ 復元に失敗しました\n${result.error}`);
+                }
+            };
+            reader.readAsText(file);
+        });
+    </script>
+</body>
+
+</html>
