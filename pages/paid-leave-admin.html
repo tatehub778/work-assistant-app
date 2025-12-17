@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>有給管理 - 現場業務アシスタント</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+
+<body>
+    <header>
+        <div class="header-left">
+            <a href="../index.html" class="back-button"><i class="fas fa-arrow-left"></i> 戻る</a>
+            <h1>有給残日数管理</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="card">
+            <p class="description">社員ごとの有給残日数を管理します。CSVインポートも可能です。</p>
+
+            <div class="action-bar">
+                <input type="file" id="csv-input" accept=".csv" style="display: none;">
+                <button id="import-btn" class="btn btn-secondary">
+                    <i class="fas fa-file-csv"></i> CSVインポート
+                </button>
+            </div>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>読込中...</p>
+            </div>
+
+            <div class="table-responsive">
+                <table class="data-table" id="leave-table">
+                    <thead>
+                        <tr>
+                            <th>氏名</th>
+                            <th>有給残日数</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leave-tbody">
+                        <!-- JavaScriptで生成 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="button-group" style="margin-top: 20px;">
+                <button id="save-btn" class="btn btn-primary btn-block">
+                    <i class="fas fa-save"></i> すべて保存する
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/config.js"></script>
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const tbody = document.getElementById('leave-tbody');
+            const saveBtn = document.getElementById('save-btn');
+            const importBtn = document.getElementById('import-btn');
+            const csvInput = document.getElementById('csv-input');
+            const loading = document.getElementById('loading');
+
+            let allUsers = [];
+            let currentBalances = {};
+
+            // 初期ロード
+            try {
+                loading.classList.remove('hidden');
+                allUsers = await Storage.getUserList();
+                currentBalances = await Storage.getPaidLeaveBalance();
+                renderTable();
+            } catch (error) {
+                console.error('Init failed:', error);
+                alert('データの読み込みに失敗しました。');
+            } finally {
+                loading.classList.add('hidden');
+            }
+
+            // CSVインポートボタン
+            importBtn.addEventListener('click', () => csvInput.click());
+
+            // CSVファイル選択時
+            csvInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const csv = event.target.result;
+                    parseCSV(csv);
+                    renderTable();
+                    csvInput.value = ''; // リセット
+                    alert('CSVを読み込みました。確認して「保存する」を押してください。');
+                };
+                reader.readAsText(file);
+            });
+
+            // 保存ボタン
+            saveBtn.addEventListener('click', async () => {
+                const inputs = tbody.querySelectorAll('input[type="number"]');
+                const newBalances = {};
+
+                inputs.forEach(input => {
+                    const name = input.dataset.user;
+                    const val = input.value;
+                    if (val !== '') {
+                        newBalances[name] = parseFloat(val);
+                    }
+                });
+
+                if (confirm('現在の内容で有給残日数を更新しますか？')) {
+                    try {
+                        loading.classList.remove('hidden');
+                        saveBtn.disabled = true;
+
+                        await Storage.savePaidLeaveBalance(newBalances);
+
+                        // ローカル変数も更新
+                        currentBalances = newBalances;
+                        alert('保存しました！');
+                    } catch (error) {
+                        console.error('Save failed:', error);
+                        alert('保存に失敗しました。');
+                    } finally {
+                        loading.classList.add('hidden');
+                        saveBtn.disabled = false;
+                    }
+                }
+            });
+
+            function renderTable() {
+                tbody.innerHTML = '';
+
+                if (allUsers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="no-data">ユーザーがいません</td></tr>';
+                    return;
+                }
+
+                allUsers.forEach(user => {
+                    const balance = currentBalances[user] !== undefined ? currentBalances[user] : '';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${user}</td>
+                        <td>
+                            <input type="number" 
+                                   class="form-control" 
+                                   data-user="${user}" 
+                                   value="${balance}" 
+                                   step="0.5" 
+                                   min="0"
+                                   placeholder="残日数を入力">
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            function parseCSV(csv) {
+                const lines = csv.split(/\r\n|\n/);
+                // ヘッダーがある前提でも、単純に名前マッチで更新する
+                // 想定フォーマット: 氏名,残日数
+
+                lines.forEach(line => {
+                    const parts = line.split(',');
+                    if (parts.length >= 2) {
+                        const name = parts[0].trim();
+                        // 数値のみ抽出（余計な文字があっても対応できるように）
+                        const numStr = parts[1].trim();
+                        const val = parseFloat(numStr);
+
+                        // ユーザーリストにいる名前のみ更新
+                        if (allUsers.includes(name) && !isNaN(val)) {
+                            currentBalances[name] = val;
+                        }
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>

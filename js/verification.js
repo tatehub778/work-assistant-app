@@ -1,12 +1,27 @@
 // ==================== //
-// CSV照合ロジック (複数ファイル対応版 + 永続化 + GAS同期)
+// CSV照合ロジック (複数ファイル対応版 + 永続化 + GAS同期 + 月別フィルタ + 遅刻履歴)
 // ==================== //
 
 const CBO_CACHE_KEY = 'work-assistant-cbo-cache';
+let currentCboData = []; // メモリ上に保持
+let currentFileCount = 0;
+let paidLeaveBalances = {};
 
 document.addEventListener('DOMContentLoaded', () => {
     const uploadArea = document.getElementById('uploadArea');
     const csvInput = document.getElementById('csvInput');
+    const monthFilter = document.getElementById('monthFilter');
+
+    // 今月を初期値に設定
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    monthFilter.value = `${y}-${m}`;
+
+    // 月変更イベント
+    monthFilter.addEventListener('change', () => {
+        refreshView();
+    });
 
     // 保存されたデータがあれば読み込む（サーバー同期含む）
     loadCachedData();
@@ -77,17 +92,17 @@ async function processFiles(fileList) {
             return;
         }
 
-        // データを保存（サーバー同期）
+        // 保存 & サーバー同期
         await saveCBOData(allCboData, totalFilesRead);
 
-        const appData = getAppData();
-        const comparison = compareData(allCboData, appData);
+        // メモリ更新
+        currentCboData = allCboData;
+        currentFileCount = totalFilesRead;
 
-        // エラーがあった場合はそれも表示しつつ、成功した分の結果を表示
-        renderResults(comparison, allCboData.length, totalFilesRead, errorMessages);
+        // 表示更新 (エラー表示も含めて)
+        refreshView(errorMessages);
 
-        loadingEl.style.display = 'block';
-        resultsEl.style.display = 'block';
+        loadingEl.style.display = 'none';
 
     } catch (error) {
         console.error(error);
@@ -95,6 +110,94 @@ async function processFiles(fileList) {
         loadingEl.style.display = 'none';
     }
 }
+
+// ビューを更新（月フィルタ適用して再表示）
+async function refreshView(uploadErrors = []) {
+    const month = document.getElementById('monthFilter').value; // YYYY-MM
+    if (!month) return;
+
+    // 1. CBO照合
+    runComparison(month, uploadErrors);
+
+    // 2. 遅刻履歴取得・表示
+    await renderLateHistory(month);
+}
+
+// 照合実行
+function runComparison(monthStr, errors) {
+    const resultsEl = document.getElementById('results');
+
+    // CBOデータを月でフィルタ
+    const filteredCboData = currentCboData.filter(d => d.date.startsWith(monthStr));
+
+    // アプリデータを月でフィルタ
+    const appData = getAppData(monthStr);
+
+    // 比較実行
+    const comparison = compareData(filteredCboData, appData);
+
+    // 表示
+    renderResults(comparison, filteredCboData.length, currentFileCount, errors);
+    resultsEl.style.display = 'block';
+}
+
+// 遅刻履歴表示
+async function renderLateHistory(monthStr) {
+    const container = document.getElementById('lateHistoryResults');
+    container.style.display = 'block';
+    container.innerHTML = '<p style="text-align:center;">⌛ 遅刻履歴を取得中...</p>';
+
+    // GASから取得
+    const checks = await Storage.getLateChecksMonthly(monthStr);
+
+    container.innerHTML = ''; // クリア
+
+    if (!checks || checks.length === 0) {
+        // データなしの場合でも枠は出すかどうか...今回は出しておく
+        // container.innerHTML = '<div class="result-card"><div class="result-header">遅刻記録</div><div class="result-content">データなし</div></div>';
+        return;
+    }
+
+    // ユーザー毎に集計
+    // { "田中": ["2024-12-15", "2024-12-17"], ... }
+    const grouped = {};
+    checks.forEach(c => {
+        if (!grouped[c.userName]) grouped[c.userName] = [];
+        grouped[c.userName].push(c.date);
+    });
+
+    // 日付順にソートして重複除去（念のため）
+    Object.keys(grouped).forEach(user => {
+        grouped[user] = [...new Set(grouped[user])].sort();
+    });
+
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.innerHTML = `
+        <div class="result-header warning"><span>⏰ ${monthStr} 遅刻記録一覧</span></div>
+        <div class="result-content">
+            <table class="diff-table">
+                <thead><tr><th style="width:30%">氏名</th><th>遅刻日</th><th>回数</th></tr></thead>
+                <tbody>
+                    ${Object.keys(grouped).map(user => {
+        const dates = grouped[user].map(d => {
+            // 日付のみ見やすく (MM/DD)
+            const dateParts = d.split('-');
+            return `${dateParts[1]}/${dateParts[2]}`;
+        }).join(', ');
+        return `<tr>
+                            <td style="font-weight:bold;">${user}</td>
+                            <td>${dates}</td>
+                            <td style="text-align:center;">${grouped[user].length}</td>
+                        </tr>`;
+    }).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+    container.appendChild(card);
+}
+
 
 // データを保存
 async function saveCBOData(data, fileCount) {
@@ -108,7 +211,7 @@ async function saveCBOData(data, fileCount) {
         updateLastSavedUI(cache.timestamp, '保存中...');
 
         // サーバー同期
-        const success = await saveCBODataToGAS(data, fileCount);
+        const success = await Storage.saveCBODataToGAS(data, fileCount);
         if (success) {
             updateLastSavedUI(cache.timestamp, 'サーバー同期完了');
         } else {
@@ -131,18 +234,33 @@ async function loadCachedData() {
         console.error('キャッシュ読み込みエラー', e);
     }
 
-    // まずローカルデータを表示
+    // まずローカルデータで初期化
     if (localCache && localCache.data) {
+        currentCboData = localCache.data;
+        currentFileCount = localCache.fileCount;
         updateLastSavedUI(localCache.timestamp, 'サーバー確認中...');
-        runComparison(localCache.data, localCache.fileCount);
+        refreshView();
     }
 
-    // サーバーから最新を取得
-    const serverData = await fetchCBODataFromGAS();
+    // 有給残日数を取得 (並行して行う)
+    Storage.getPaidLeaveBalance().then(balances => {
+        console.log('有給残データ取得:', balances); // DEBUG
+        if (balances) {
+            // キー（氏名）を正規化して保存
+            const normalizedMap = {};
+            Object.keys(balances).forEach(key => {
+                const normalizedKey = normalizeName(key);
+                normalizedMap[normalizedKey] = balances[key];
+            });
+            paidLeaveBalances = normalizedMap;
+            refreshView(); // 残日数反映のため再描画
+        }
+    });
 
-    // サーバーデータがあり、かつローカルより新しい(またはローカルがない)場合
+    // サーバーから最新を取得
+    const serverData = await Storage.fetchCBODataFromGAS();
+
     if (serverData) {
-        // 日付形式を正規化 (GASからDate型として返ってきてISO文字列になっている場合があるため)
         serverData.data = serverData.data.map(item => ({
             ...item,
             date: normalizeDateStr(item.date)
@@ -152,11 +270,15 @@ async function loadCachedData() {
         const localTime = localCache ? new Date(localCache.timestamp).getTime() : 0;
 
         if (serverTime > localTime) {
-            // サーバーの方が新しいので更新
             console.log('サーバーから新しいデータを取得しました');
             localStorage.setItem(CBO_CACHE_KEY, JSON.stringify(serverData));
             updateLastSavedUI(serverData.timestamp, 'サーバー同期完了(最新)');
-            runComparison(serverData.data, serverData.fileCount);
+
+            // データ更新して再描画
+            currentCboData = serverData.data;
+            currentFileCount = serverData.fileCount;
+            refreshView();
+
         } else if (localCache) {
             updateLastSavedUI(localCache.timestamp, 'サーバー同期完了');
         }
@@ -165,37 +287,250 @@ async function loadCachedData() {
     }
 }
 
-// 日付文字列を正規化 (YYYY-MM-DD形式に統一)
+// 日付文字列を正規化
 function normalizeDateStr(dateStr) {
     if (!dateStr) return '';
-    // すでにYYYY-MM-DD形式ならそのまま (正規表現で簡易チェック)
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-
-    // ISO文字列などをDateオブジェクトにしてから変換
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
-
-    // ※注意: 単純に getISOString().split('T')[0] だとUTC基準になり、日本時間の深夜が前日になる可能性がある
-    // ここではブラウザのローカルタイム(JST想定)でYYYY-MM-DDを作る
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const da = String(d.getDate()).padStart(2, '0');
     return `${y}-${m}-${da}`;
 }
 
-function runComparison(cboData, fileCount) {
-    const appData = getAppData();
-    const comparison = compareData(cboData, appData);
-    renderResults(comparison, cboData.length, fileCount || 1, []);
-    document.getElementById('results').style.display = 'block';
+function getAppData(monthStr) {
+    const attendance = Storage.getData(STORAGE_KEYS.ATTENDANCE);
+
+    // 月でフィルタ & カテゴリ補正
+    const monthlyData = attendance.filter(d => {
+        if (!d.timestamp) return false;
+        return d.timestamp.startsWith(monthStr);
+    }).map(d => {
+        // カテゴリが「勤怠」または不明の場合の補正
+        if (d.category === '勤怠' || !d.category) {
+            if (d.leaveDate) return { ...d, category: '代休申請' };
+            if (d.startDate || (d.days && d.reason)) return { ...d, category: '有給申請' };
+            if (d.type || d.minutes) return { ...d, category: '遅刻早退' };
+        }
+        return d;
+    });
+
+    const lateEarly = monthlyData.filter(d => ['遅刻', '早退', '中抜け'].includes(d.type) || d.category === '遅刻早退');
+    const paidLeave = monthlyData.filter(d => d.type === '有給' || d.category === '有給申請');
+    const compLeave = monthlyData.filter(d => d.type === '代休' || d.category === '代休申請');
+
+    return [...lateEarly, ...paidLeave, ...compLeave].map(d => {
+        let type = d.type;
+        if (!type) {
+            if (d.category === '有給申請') type = '有給';
+            else if (d.category === '代休申請') type = '代休';
+            else if (d.category === '遅刻早退') type = '遅刻'; // フォールバック
+        }
+
+        let dateStr = d.date; // 遅刻早退などはこれ
+        if (!dateStr) {
+            if (d.category === '有給申請') dateStr = d.startDate;
+            else if (d.category === '代休申請') dateStr = d.leaveDate;
+            else if (d.timestamp) dateStr = d.timestamp.split('T')[0];
+        }
+
+        // 比較用の数値（分単位または日数）
+        let amount = 0;
+        if (['有給', '代休'].includes(type)) {
+            amount = d.days || 1; // 日数
+        } else {
+            amount = parseInt(d.minutes || 0, 10); // 分
+        }
+
+        return {
+            ...d,
+            type: type,
+            amount: amount,
+            userName: normalizeName(d.userName),
+            date: normalizeDateStr(dateStr)
+        };
+    });
 }
 
-// 最終更新日時の表示更新
+function normalizeName(name) {
+    if (!name) return '';
+    let n = name.replace(/[\s　]/g, '');
+    return n.replace(/\d+$/, '');
+}
+
+function compareData(cboData, appData) {
+    const results = {
+        missingInApp: [],
+        missingInCSV: [],
+        matches: [],        // 完全一致
+        timeMismatches: []  // 時間ずれ
+    };
+
+    cboData.forEach(cRecord => {
+        const match = appData.find(aRecord =>
+            aRecord.date === cRecord.date &&
+            aRecord.userName === cRecord.userName &&
+            (aRecord.type.includes(cRecord.type) || cRecord.type.includes(aRecord.type))
+        );
+
+        if (match) {
+            // 時間・日数の比較
+            const cAmount = cRecord.amount || 0;
+            const aAmount = match.amount || 0;
+            let isMismatch = false;
+
+            if (['有給', '代休'].includes(cRecord.type)) {
+                // 日数比較 (0.1日以上の差)
+                if (Math.abs(cAmount - aAmount) >= 0.1) isMismatch = true;
+            } else {
+                // 時間比較 (5分以上の差)
+                if (Math.abs(cAmount - aAmount) >= 5) isMismatch = true;
+            }
+
+            if (isMismatch) {
+                results.timeMismatches.push({ cbo: cRecord, app: match, diff: aAmount - cAmount });
+            } else {
+                results.matches.push({ cbo: cRecord, app: match });
+            }
+        } else {
+            results.missingInApp.push(cRecord);
+        }
+    });
+
+    appData.forEach(aRecord => {
+        const alreadyMatched = results.matches.some(m => m.app.id === aRecord.id) ||
+            results.timeMismatches.some(m => m.app.id === aRecord.id);
+        if (!alreadyMatched) {
+            results.missingInCSV.push(aRecord);
+        }
+    });
+
+    return results;
+}
+
+function renderError(message, debugInfo) {
+    const container = document.getElementById('results');
+    container.style.display = 'block';
+    container.innerHTML = `<div class="result-card"><div class="result-header error">❌ 解析エラー</div><div class="result-content"><p>${message}</p><pre style="background:#eee;padding:10px;">${debugInfo}</pre></div></div>`;
+}
+
+function renderResults(results, count, fileCount, errors) {
+    const container = document.getElementById('results');
+    container.innerHTML = '';
+
+    if (errors && errors.length > 0) {
+        const errorCard = document.createElement('div');
+        errorCard.className = 'result-card';
+        errorCard.innerHTML = `
+            <div class="result-header error"><span>⚠️ 一部のファイルでエラー</span></div>
+            <div class="result-content"><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul></div>
+        `;
+        container.appendChild(errorCard);
+    }
+
+    const infoCard = document.createElement('div');
+    infoCard.style.cssText = 'margin-bottom:20px; padding:10px; background:#e7f5ff; border-radius:8px; color:#1971c2;';
+    infoCard.innerHTML = `📊 <strong>${count}</strong> 件のCBOデータ（${fileCount}ファイル）と照合しました。`;
+    container.appendChild(infoCard);
+
+    const createSection = (title, items, typeClass, badgeClass, badgeLabel) => {
+        if (items.length === 0) return;
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+            <div class="result-header ${typeClass}"><span>${title} (${items.length}件)</span></div>
+            <div class="result-content">
+                <table class="diff-table">
+                    <thead><tr><th>日付</th><th>氏名</th><th>内容</th><th>詳細/理由</th><th>状態</th></tr></thead>
+                    <tbody>
+                        ${items.map(item => {
+            const date = item.date || (item.cbo ? item.cbo.date : item.app.date);
+            const shortDate = date ? date.substring(5).replace('-', '/') : '';
+            const name = item.userName || (item.cbo ? item.cbo.userName : item.app.userName);
+            const type = item.type || (item.cbo ? item.cbo.type : item.app.type);
+
+            // 詳細表示ロジック
+            let detail = '';
+
+            // 1. マッチ系 (matches / timeMismatches) → CBOとAppの両方がある
+            if (item.cbo && item.app) {
+                detail += `CSV: ${item.cbo.detail} / `;
+                if (['有給', '代休'].includes(type) || type.includes('有給') || type.includes('代休')) {
+                    const days = item.app.amount || 1;
+                    detail += `App: ${days === 0.5 ? '0.5' : days}日`;
+                } else {
+                    detail += `App: ${item.app.minutes}分`;
+                }
+                if (item.app.reason) detail += ` (${item.app.reason})`;
+
+                // 差分表示(時間ずれの場合)
+                /*
+                // ユーザー要望により差分数値は表示しない（単位違いで混乱するため）
+                if (item.diff) {
+                    const diffVal = Math.abs(item.diff);
+                    if (['有給', '代休'].includes(type)) {
+                        detail += ` <span style="color:#d6336c; font-weight:bold;">(差:${diffVal.toFixed(1)}日)</span>`;
+                    } else {
+                        detail += ` <span style="color:#d6336c; font-weight:bold;">(差:${Math.round(diffVal)}分)</span>`;
+                    }
+                }
+                */
+            }
+            // 2. アプリ未報告 (CBOのみ)
+            else if (item.cbo || (!item.app && item.detail)) {
+                const cboItem = item.cbo || item;
+                detail = cboItem.detail || '';
+            }
+            // 3. CBO未反映 (アプリのみ)
+            else if (item.app || (!item.cbo && item.amount !== undefined)) {
+                const appItem = item.app || item;
+                if (['有給', '代休'].includes(type) || type.includes('有給') || type.includes('代休')) {
+                    const days = appItem.amount || 1;
+                    detail += `${days === 0.5 ? '0.5' : days}日 `;
+                } else {
+                    if (appItem.minutes) detail += `${appItem.minutes}分 `;
+                }
+                if (appItem.reason) detail += appItem.reason;
+                if (!detail) detail = appItem.detail || appItem.note || '';
+            }
+
+            // 有給残日数表示（Appデータがある場合）
+            if (type && type.includes('有給')) {
+                const balance = paidLeaveBalances[name];
+                if (balance !== undefined) {
+                    detail += ` <span style="color:#d6336c; font-weight:bold;">(残:${balance}日)</span>`;
+                }
+            }
+
+            return `<tr>
+                                <td>${shortDate}</td>
+                                <td>${name}</td>
+                                <td>${type}</td>
+                                <td style="font-size:0.9em; color:#666;">${detail}</td>
+                                <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
+                            </tr>`;
+        }).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+        container.appendChild(card);
+    };
+
+    createSection('⚠️ アプリ未報告 (CBOのみ存在)', results.missingInApp, 'error', 'badge-missing-app', '未報告');
+    createSection('⚠️ CBO未反映 (アプリのみ存在)', results.missingInCSV, 'warning', 'badge-missing-csv', '未反映');
+    createSection('🕒 時間ずれ (要確認)', results.timeMismatches, 'warning', 'badge-missing-csv', '時間ずれ');
+    createSection('✅ 照合OK', results.matches, 'success', 'badge-match', 'OK');
+
+    if (results.missingInApp.length === 0 && results.missingInCSV.length === 0 && results.matches.length === 0 && results.timeMismatches.length === 0) {
+        container.innerHTML += '<div style="padding:20px; text-align:center; color:#666;">この月の照合対象データはありません</div>';
+    }
+}
+
 function updateLastSavedUI(isoDate, statusText = '') {
     const date = new Date(isoDate);
     const dateStr = `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
 
-    // 既存の表示があれば更新、なければ追加
     let statusEl = document.getElementById('lastSavedStatus');
     if (!statusEl) {
         const uploadArea = document.getElementById('uploadArea');
@@ -206,7 +541,6 @@ function updateLastSavedUI(isoDate, statusText = '') {
         statusEl.style.color = '#666';
         uploadArea.appendChild(statusEl);
 
-        // クリアボタンも追加
         const clearBtn = document.createElement('a');
         clearBtn.href = '#';
         clearBtn.textContent = '【保存データをクリア】';
@@ -219,7 +553,9 @@ function updateLastSavedUI(isoDate, statusText = '') {
             if (confirm('保存された照合用データを削除しますか？')) {
                 localStorage.removeItem(CBO_CACHE_KEY);
                 statusEl.remove();
-                document.getElementById('results').innerHTML = '';
+                currentCboData = [];
+                currentFileCount = 0;
+                refreshView();
             }
         };
         statusEl.appendChild(clearBtn);
@@ -229,7 +565,7 @@ function updateLastSavedUI(isoDate, statusText = '') {
     statusEl.childNodes[0].nodeValue = `最終保存: ${dateStr}${statusMsg} `;
 }
 
-// ファイル単体の読み込みとパース
+// ファイル読み込み処理は変更なし
 function readFile(file) {
     return new Promise((resolve) => {
         const reader = new FileReader();
@@ -263,8 +599,8 @@ function readFile(file) {
     });
 }
 
-// CBOのCSVパース
 function parseCBOCSV(content) {
+    // 既存のパースロジック（そのままコピー）
     const lines = content.split(/\r\n|\n/).map(line => line.trim()).filter(line => line);
     if (lines.length === 0) return { error: 'ファイルが空です', records: [] };
 
@@ -313,152 +649,27 @@ function parseCBOCSV(content) {
         const rawName = values[idx.name];
         const normalizedName = normalizeName(rawName);
 
-        // 有給チェック (ハイフンや0は無視)
         if (idx.paid >= 0 && values[idx.paid] && values[idx.paid] !== '-' && values[idx.paid] !== '0') {
-            records.push({ date: formattedDate, userName: normalizedName, type: '有給', detail: values[idx.paid] });
+            const val = parseFloat(values[idx.paid]);
+            records.push({ date: formattedDate, userName: normalizedName, type: '有給', detail: values[idx.paid], amount: isNaN(val) ? 1 : val });
         }
-        // 代休チェック (ハイフンや0は無視)
         if (idx.comp >= 0 && values[idx.comp] && values[idx.comp] !== '-' && values[idx.comp] !== '0') {
-            records.push({ date: formattedDate, userName: normalizedName, type: '代休', detail: values[idx.comp] });
+            const val = parseFloat(values[idx.comp]);
+            records.push({ date: formattedDate, userName: normalizedName, type: '代休', detail: values[idx.comp], amount: isNaN(val) ? 1 : val });
         }
-        // 遅刻チェック (数値が入っていれば)
         if (idx.late >= 0 && values[idx.late] && values[idx.late] !== '-') {
             const val = parseFloat(values[idx.late]);
-            if (val > 0) {
-                records.push({ date: formattedDate, userName: normalizedName, type: '遅刻', detail: values[idx.late] + 'h' });
-            }
+            if (val > 0) records.push({ date: formattedDate, userName: normalizedName, type: '遅刻', detail: values[idx.late] + 'h', amount: val * 60 });
         }
-        // 早退チェック
         if (idx.early >= 0 && values[idx.early] && values[idx.early] !== '-') {
             const val = parseFloat(values[idx.early]);
-            if (val > 0) {
-                records.push({ date: formattedDate, userName: normalizedName, type: '早退', detail: values[idx.early] + 'h' });
-            }
+            if (val > 0) records.push({ date: formattedDate, userName: normalizedName, type: '早退', detail: values[idx.early] + 'h', amount: val * 60 });
         }
-        // 中抜けチェック
         if (idx.break >= 0 && values[idx.break] && values[idx.break] !== '-') {
             const val = parseFloat(values[idx.break]);
-            if (val > 0) {
-                records.push({ date: formattedDate, userName: normalizedName, type: '中抜け', detail: values[idx.break] + 'h' });
-            }
+            if (val > 0) records.push({ date: formattedDate, userName: normalizedName, type: '中抜け', detail: values[idx.break] + 'h', amount: val * 60 });
         }
     });
 
     return { records: records };
-}
-
-function getAppData() {
-    const attendance = getData(STORAGE_KEYS.ATTENDANCE);
-    const lateEarly = attendance.filter(d => ['遅刻', '早退', '中抜け'].includes(d.type) || d.category === '遅刻早退');
-    const paidLeave = attendance.filter(d => d.type === '有給' || d.category === '有給申請');
-    const compLeave = attendance.filter(d => d.type === '代休' || d.category === '代休申請');
-
-    return [...lateEarly, ...paidLeave, ...compLeave].map(d => ({
-        ...d,
-        userName: normalizeName(d.userName),
-    }));
-}
-
-function normalizeName(name) {
-    if (!name) return '';
-    let n = name.replace(/[\s　]/g, '');
-    return n.replace(/\d+$/, '');
-}
-
-function compareData(cboData, appData) {
-    const results = {
-        missingInApp: [],
-        missingInCSV: [],
-        matches: []
-    };
-
-    cboData.forEach(cRecord => {
-        const match = appData.find(aRecord =>
-            aRecord.date === cRecord.date &&
-            aRecord.userName === cRecord.userName &&
-            (aRecord.type.includes(cRecord.type) || cRecord.type.includes(aRecord.type))
-        );
-
-        if (match) {
-            results.matches.push({ cbo: cRecord, app: match });
-        } else {
-            results.missingInApp.push(cRecord);
-        }
-    });
-
-    appData.forEach(aRecord => {
-        const alreadyMatched = results.matches.some(m => m.app.id === aRecord.id);
-        if (!alreadyMatched) {
-            results.missingInCSV.push(aRecord);
-        }
-    });
-
-    return results;
-}
-
-function renderError(message, debugInfo) {
-    const container = document.getElementById('results');
-    container.style.display = 'block';
-    container.innerHTML = `<div class="result-card"><div class="result-header error">❌ 解析エラー</div><div class="result-content"><p>${message}</p><pre style="background:#eee;padding:10px;">${debugInfo}</pre></div></div>`;
-}
-
-function renderResults(results, count, fileCount, errors) {
-    const container = document.getElementById('results');
-    container.innerHTML = '';
-
-    if (errors && errors.length > 0) {
-        const errorCard = document.createElement('div');
-        errorCard.className = 'result-card';
-        errorCard.innerHTML = `
-            <div class="result-header error"><span>⚠️ 一部のファイルでエラー</span></div>
-            <div class="result-content"><ul>${errors.map(e => `<li>${e}</li>`).join('')}</ul></div>
-        `;
-        container.appendChild(errorCard);
-    }
-
-    const infoCard = document.createElement('div');
-    infoCard.style.cssText = 'margin-bottom:20px; padding:10px; background:#e7f5ff; border-radius:8px; color:#1971c2;';
-    infoCard.innerHTML = `📊 <strong>${fileCount}</strong> ファイルから <strong>${count}</strong> 件の対象レコードを抽出しました。`;
-    container.appendChild(infoCard);
-
-    const createSection = (title, items, typeClass, badgeClass, badgeLabel) => {
-        if (items.length === 0) return;
-        const card = document.createElement('div');
-        card.className = 'result-card';
-        card.innerHTML = `
-            <div class="result-header ${typeClass}"><span>${title} (${items.length}件)</span></div>
-            <div class="result-content">
-                <table class="diff-table">
-                    <thead><tr><th>日付</th><th>氏名</th><th>内容</th><th>詳細/理由</th><th>状態</th></tr></thead>
-                    <tbody>
-                        ${items.map(item => {
-            const date = item.date || item.cbo?.date || item.app?.date;
-            const name = item.userName || item.cbo?.userName || item.app?.userName;
-            const type = item.type || (item.cbo ? item.cbo.type : item.app.type);
-            let detail = '';
-            if (item.cbo) detail += `CSV: ${item.cbo.detail} `;
-            if (item.app) detail += `App: ${item.app.reason || ''} ${item.app.minutes ? item.app.minutes + '分' : ''}`;
-            if (!item.cbo && !item.app) detail = item.detail || item.reason || '';
-
-            return `<tr>
-                                <td>${date}</td>
-                                <td>${name}</td>
-                                <td>${type}</td>
-                                <td style="font-size:0.9em; color:#666;">${detail}</td>
-                                <td><span class="badge ${badgeClass}">${badgeLabel}</span></td>
-                            </tr>`;
-        }).join('')}
-                    </tbody>
-                </table>
-            </div>`;
-        container.appendChild(card);
-    };
-
-    createSection('⚠️ アプリ未報告 (CBOのみ存在)', results.missingInApp, 'error', 'badge-missing-app', '未報告');
-    createSection('⚠️ CBO未反映 (アプリのみ存在)', results.missingInCSV, 'warning', 'badge-missing-csv', '未反映');
-    createSection('✅ 照合OK', results.matches, 'success', 'badge-match', 'OK');
-
-    if (results.missingInApp.length === 0 && results.missingInCSV.length === 0 && results.matches.length === 0) {
-        container.innerHTML += '<div style="padding:20px; text-align:center;">照合対象データなし</div>';
-    }
 }

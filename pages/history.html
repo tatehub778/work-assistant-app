@@ -89,26 +89,26 @@
             <div class="form-group">
                 <label>表示方法</label>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label style="display: flex; align-items: center; cursor: pointer; white-space: nowrap;">
                         <input type="radio" name="viewMode" value="date" checked style="margin-right: 5px;">
                         📅 日付ごと
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label style="display: flex; align-items: center; cursor: pointer; white-space: nowrap;">
                         <input type="radio" name="viewMode" value="user" style="margin-right: 5px;">
                         👤 人ごと
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label style="display: flex; align-items: center; cursor: pointer; white-space: nowrap;">
                         <input type="radio" name="viewMode" value="category" style="margin-right: 5px;">
                         📋 カテゴリごと
                     </label>
                 </div>
                 <label>並び順</label>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label style="display: flex; align-items: center; cursor: pointer; white-space: nowrap;">
                         <input type="radio" name="sortOrder" value="desc" checked style="margin-right: 5px;">
                         ⬇️ 新しい順
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label style="display: flex; align-items: center; cursor: pointer; white-space: nowrap;">
                         <input type="radio" name="sortOrder" value="asc" style="margin-right: 5px;">
                         ⬆️ 古い順
                     </label>
@@ -236,7 +236,15 @@
             const keys = [STORAGE_KEYS.ATTENDANCE, STORAGE_KEYS.WORK_REPORTS, STORAGE_KEYS.NIGHT_SHIFTS, STORAGE_KEYS.TEAM_INSTRUCTIONS];
             let all = [];
             keys.forEach(key => {
-                const data = getData(key).map(item => ({ ...item, _sourceKey: key }));
+                const data = getData(key).map(item => {
+                    // カテゴリ補正ロジック: 「勤怠」になってしまったデータを中身で判別
+                    if (item.category === '勤怠' || !item.category) {
+                        if (item.leaveDate) item.category = '代休申請';
+                        else if (item.startDate || (item.days && item.reason)) item.category = '有給申請';
+                        else if (item.type || item.minutes) item.category = '遅刻早退';
+                    }
+                    return { ...item, _sourceKey: key };
+                });
                 all = all.concat(data);
             });
             return all;
@@ -517,7 +525,13 @@
                     break;
 
                 case '代休申請':
-                    html += `<span class="detail-label">代休取得日:</span> ${formatDate(record.leaveDate)}<br>`;
+                    html += `<span class="detail-label">代休取得日:</span> ${formatDate(record.leaveDate)}`;
+                    if (record.days) {
+                        // 0.5なら半休、それ以外は日数
+                        const daysText = record.days === 0.5 ? '0.5日 (半休)' : `${record.days}日`;
+                        html += ` <strong>[${daysText}]</strong>`;
+                    }
+                    html += `<br>`;
                     html += `<span class="detail-label">休日出勤日:</span> ${formatDate(record.workDate)}<br>`;
                     if (record.note) {
                         html += `<span class="detail-label">備考:</span> ${record.note}`;
@@ -589,6 +603,21 @@
                         if (parts.length === 0) parts.push('通常勤務');
                         html += `　・${inst.member}: ${parts.join('、')}<br>`;
                     });
+                    break;
+
+                case '勤怠': // 汎用・フォールバック（カテゴリーがずれてしまった場合など）
+                default:
+                    if (record.type) html += `<span class="detail-label">種別:</span> ${record.type}<br>`;
+                    if (record.detail) html += `<span class="detail-label">詳細:</span> ${record.detail}<br>`;
+                    if (record.reason) html += `<span class="detail-label">理由:</span> ${record.reason}<br>`;
+                    if (record.note) html += `<span class="detail-label">備考:</span> ${record.note}<br>`;
+                    if (record.workContent) html += `<span class="detail-label">内容:</span> ${record.workContent}<br>`;
+
+                    // 日付らしきものを探して表示
+                    const dateField = record.date || record.startDate || record.workDate || record.shiftDate || record.leaveDate;
+                    if (dateField) {
+                        html += `<span class="detail-label">日付:</span> ${formatDate(dateField)}<br>`;
+                    }
                     break;
             }
 

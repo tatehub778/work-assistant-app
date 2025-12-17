@@ -33,6 +33,18 @@
                 </div>
 
                 <div class="form-group">
+                    <label>取得単位</label>
+                    <div style="display: flex; gap: 20px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="radio" name="leaveType" value="1" checked style="margin-right: 5px;"> 1日
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="radio" name="leaveType" value="0.5" style="margin-right: 5px;"> 半日
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
                     <label for="workDate">元の出勤日（休日出勤日）</label>
                     <input type="date" id="workDate" required>
                 </div>
@@ -92,6 +104,7 @@
             const leaveDate = document.getElementById('leaveDate').value;
             const workDate = document.getElementById('workDate').value;
             const note = document.getElementById('note').value;
+            const days = document.querySelector('input[name="leaveType"]:checked').value;
 
             if (!userName) {
                 alert('氏名を選択してください');
@@ -103,14 +116,16 @@
                 leaveDate: leaveDate,
                 workDate: workDate,
                 note: note,
-                category: '代休申請'
+                category: '代休申請',
+                days: parseFloat(days)
             };
 
             // データを保存
             saveData(STORAGE_KEYS.ATTENDANCE, data);
 
             // LINE投稿用テキスト生成
-            let lineText = `【代休申請】\n氏名: ${userName}\n代休取得日: ${formatDate(leaveDate)}\n休日出勤日: ${formatDate(workDate)}`;
+            const daysText = days === '1' ? '1日' : '半日';
+            let lineText = `【代休申請】\n氏名: ${userName}\n代休取得日: ${formatDate(leaveDate)} (${daysText})\n休日出勤日: ${formatDate(workDate)}`;
 
             if (note) {
                 lineText += `\n備考: ${note}`;
@@ -123,6 +138,8 @@
             setTimeout(() => {
                 this.reset();
                 document.getElementById('leaveDate').valueAsDate = new Date();
+                // ラジオボタンをリセット（デフォルト1日に戻す）
+                document.querySelector('input[name="leaveType"][value="1"]').checked = true;
             }, 1000);
         });
 
@@ -132,6 +149,7 @@
             const leaveDate = document.getElementById('leaveDate').value;
             const workDate = document.getElementById('workDate').value;
             const note = document.getElementById('note').value;
+            const days = document.querySelector('input[name="leaveType"]:checked').value;
 
             if (!userName || !leaveDate || !workDate) {
                 alert('必須項目を入力してください');
@@ -143,7 +161,8 @@
                 leaveDate: leaveDate,
                 workDate: workDate,
                 note: note,
-                category: '代休申請'
+                category: '代休申請',
+                days: parseFloat(days)
             };
 
             saveData(STORAGE_KEYS.ATTENDANCE, data);
@@ -151,6 +170,7 @@
 
             document.getElementById('compensatoryLeaveForm').reset();
             document.getElementById('leaveDate').valueAsDate = new Date();
+            document.querySelector('input[name="leaveType"][value="1"]').checked = true;
         });
     </script>
 </body>

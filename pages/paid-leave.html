@@ -22,7 +22,8 @@
 
             <form id="paidLeaveForm">
                 <div class="form-group">
-                    <label for="userNameSelect">氏名</label>
+                    <label for="userNameSelect">氏名 <span id="leaveBalanceDisplay"
+                            style="margin-left:10px; font-weight:bold; font-size:0.9em; display:none;"></span></label>
                     <select id="userNameSelect" required>
                         <option value="">選択してください</option>
                     </select>
@@ -115,7 +116,51 @@
         const today = new Date();
         document.getElementById('startDate').valueAsDate = today;
         document.getElementById('endDate').valueAsDate = today;
+
+        let paidLeaveBalances = {};
+
+        // 有給残日数データを取得
+        async function loadPaidLeaveBalances() {
+            try {
+                // ローカルストレージではなく、サーバー(GAS)から最新を取得する
+                // ストレージユーティリティが読み込まれている前提
+                if (window.Storage && Storage.getPaidLeaveBalance) {
+                    const balances = await Storage.getPaidLeaveBalance();
+                    if (balances) {
+                        paidLeaveBalances = balances;
+                        // すでにユーザーが選択されていたら表示更新
+                        updateBalanceDisplay();
+                    }
+                }
+            } catch (e) {
+                console.error('有給残日数の取得に失敗', e);
+            }
+        }
+
+        function updateBalanceDisplay() {
+            const select = document.getElementById('userNameSelect');
+            const display = document.getElementById('leaveBalanceDisplay');
+            const user = select.value;
+
+            if (user && paidLeaveBalances[user] !== undefined) {
+                display.textContent = `(有給残: ${paidLeaveBalances[user]}日)`;
+                display.style.display = 'inline';
+
+                // 残日数に応じて色を変える（例：0なら赤）
+                if (parseFloat(paidLeaveBalances[user]) <= 0) {
+                    display.style.color = '#e03131';
+                } else {
+                    display.style.color = '#1971c2';
+                }
+            } else {
+                display.style.display = 'none';
+            }
+        }
+
         setupUserSelect();
+        loadPaidLeaveBalances();
+
+        document.getElementById('userNameSelect').addEventListener('change', updateBalanceDisplay);
 
         // 日数が「その他」の場合、カスタム入力欄を表示
         document.getElementById('days').addEventListener('change', function () {

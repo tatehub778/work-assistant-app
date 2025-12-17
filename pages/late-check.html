@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>遅刻チェック - 現場業務アシスタント</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .checklist-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .toggle-btn {
+            width: 100%;
+            padding: 15px 10px;
+            background-color: #f8f9fa;
+            border: 2px solid #dee2e6;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 500;
+            color: #495057;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        .toggle-btn:active {
+            transform: scale(0.98);
+        }
+
+        .toggle-btn.active {
+            background-color: #fab005;
+            /* 黄色っぽい警戒色、あるいはデザインに合わせた色 */
+            border-color: #e67700;
+            color: #fff;
+            box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.2);
+            transform: translateY(2px);
+            font-weight: bold;
+        }
+
+        .toggle-btn.active::before {
+            content: '✓ ';
+        }
+
+        /* PCでのホバー効果（スマホでは邪魔にならない程度に） */
+        @media (hover: hover) {
+            .toggle-btn:hover:not(.active) {
+                background-color: #e9ecef;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="header-left">
+            <a href="../index.html" class="back-button"><i class="fas fa-arrow-left"></i> 戻る</a>
+            <h1>遅刻チェック</h1>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="card">
+            <div class="form-group">
+                <label for="check-date">日付</label>
+                <input type="date" id="check-date" required>
+            </div>
+
+            <p class="description">遅刻したメンバーをタップして選択してください。<br><small>※保存すると選択状態が上書き保存されます。</small></p>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>読込中...</p>
+            </div>
+
+            <div id="employee-list" class="checklist-grid">
+                <!-- JavaScriptでここにリストを生成 -->
+            </div>
+
+            <div class="button-group">
+                <button id="save-btn" class="btn btn-primary btn-block">
+                    <i class="fas fa-save"></i> 保存する
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <script src="../js/config.js"></script>
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const dateInput = document.getElementById('check-date');
+            const employeeListDiv = document.getElementById('employee-list');
+            const saveBtn = document.getElementById('save-btn');
+            const loading = document.getElementById('loading');
+
+            // 今日をデフォルトに
+            dateInput.value = new Date().toISOString().split('T')[0];
+
+            let allUsers = [];
+
+            // ユーザーリスト取得
+            try {
+                loading.classList.remove('hidden');
+                allUsers = await Storage.getUserList();
+                await loadCheckData(); // 初期データのロード
+            } catch (error) {
+                console.error('Failed to init:', error);
+                alert('データの読み込みに失敗しました。');
+            } finally {
+                loading.classList.add('hidden');
+            }
+
+            // 日付変更時にデータを再取得
+            dateInput.addEventListener('change', async () => {
+                loading.classList.remove('hidden');
+                await loadCheckData();
+                loading.classList.add('hidden');
+            });
+
+            // 保存ボタン
+            saveBtn.addEventListener('click', async () => {
+                const checkedUsers = [];
+                // data-user属性を持つ .active なボタンを収集
+                const activeBtns = employeeListDiv.querySelectorAll('.toggle-btn.active');
+                activeBtns.forEach(btn => {
+                    checkedUsers.push(btn.dataset.user);
+                });
+
+                if (confirm(`${dateInput.value} の遅刻者として ${checkedUsers.length}名を保存しますか？\n（既存の記録はこの内容で上書きされます）`)) {
+                    try {
+                        loading.classList.remove('hidden');
+                        saveBtn.disabled = true;
+
+                        await Storage.saveLateCheck(dateInput.value, checkedUsers);
+
+                        alert('保存しました！');
+                    } catch (error) {
+                        console.error('Save failed:', error);
+                        alert('保存に失敗しました。');
+                    } finally {
+                        loading.classList.add('hidden');
+                        saveBtn.disabled = false;
+                    }
+                }
+            });
+
+            async function loadCheckData() {
+                employeeListDiv.innerHTML = '';
+
+                try {
+                    const savedChecks = await Storage.getLateChecks(dateInput.value);
+
+                    if (allUsers.length === 0) {
+                        employeeListDiv.innerHTML = '<p class="no-data">ユーザーが登録されていません。</p>';
+                        return;
+                    }
+
+                    allUsers.forEach(user => {
+                        const isChecked = savedChecks.includes(user);
+                        const btn = document.createElement('button');
+                        btn.className = `toggle-btn ${isChecked ? 'active' : ''}`;
+                        btn.textContent = user;
+                        btn.dataset.user = user;
+
+                        // タップ（クリック）イベント
+                        btn.addEventListener('click', function () {
+                            this.classList.toggle('active');
+                            // 触覚フィードバック（バイブレーション） - Androidなど対応端末のみ
+                            if (window.navigator && window.navigator.vibrate) {
+                                window.navigator.vibrate(50);
+                            }
+                        });
+
+                        employeeListDiv.appendChild(btn);
+                    });
+
+                } catch (error) {
+                    console.error('Load check data failed:', error);
+                    employeeListDiv.innerHTML = '<p class="error-msg">データの取得に失敗しました。</p>';
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

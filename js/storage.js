@@ -47,7 +47,7 @@ async function saveData(key, data) {
                         action: 'saveData',
                         data: {
                             ...record,
-                            category: getCategoryByKey(key) // キーからカテゴリー名を推測
+                            category: record.category || getCategoryByKey(key) // 既存のカテゴリーがあれば優先、なければ推測
                         }
                     })
                 });
@@ -394,6 +394,86 @@ async function fetchCBODataFromGAS() {
     return null;
 }
 
+// 遅刻チェック取得
+async function getLateChecks(date) {
+    if (!GAS_API_URL) return [];
+    try {
+        const response = await fetch(`${GAS_API_URL}?action=getLateChecks&date=${date}`);
+        const json = await response.json();
+        return json.checks || [];
+    } catch (e) {
+        console.error('遅刻データ取得失敗:', e);
+        return [];
+    }
+}
+
+// 遅刻チェック保存
+async function saveLateCheck(date, employees) {
+    if (!GAS_API_URL) return false;
+    try {
+        await fetch(GAS_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'saveLateCheck',
+                date: date,
+                employees: employees
+            })
+        });
+        return true;
+    } catch (e) {
+        console.error('遅刻データ保存失敗:', e);
+        return false;
+    }
+}
+
+// 月ごとの遅刻チェック取得
+async function getLateChecksMonthly(month) {
+    if (!GAS_API_URL) return [];
+    try {
+        const response = await fetch(`${GAS_API_URL}?action=getLateChecksMonthly&month=${month}`);
+        const json = await response.json();
+        return json.checks || [];
+    } catch (e) {
+        console.error('月次遅刻データ取得失敗:', e);
+        return [];
+    }
+}
+
+// 有給残日数取得
+async function getPaidLeaveBalance() {
+    if (!GAS_API_URL) return {};
+    try {
+        const response = await fetch(`${GAS_API_URL}?action=getPaidLeaveBalance`);
+        const json = await response.json();
+        return json.balances || {};
+    } catch (e) {
+        console.error('有給残日取得失敗:', e);
+        return {};
+    }
+}
+
+// 有給残日数保存
+async function savePaidLeaveBalance(balances) {
+    if (!GAS_API_URL) return false;
+    try {
+        await fetch(GAS_API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'savePaidLeaveBalance',
+                balances: balances
+            })
+        });
+        return true;
+    } catch (e) {
+        console.error('有給残日保存失敗:', e);
+        return false;
+    }
+}
+
 // ==================== //
 // バックアップ・復元機能
 // ==================== //
@@ -451,3 +531,44 @@ function importData(jsonString) {
         return { success: false, error: error.message };
     }
 }
+
+// グローバルスコープに公開
+window.Storage = {
+    saveData,
+    getData,
+    updateData,
+    getCurrentMonthData,
+    getDataByDateRange,
+    clearAllData,
+    saveDraft,
+    getDrafts,
+    getDraft,
+    updateDraft,
+    deleteDraft,
+    completeDraft,
+    syncData,
+    saveUserList,
+    getUserList: async () => {
+        let listStr = localStorage.getItem('user_list');
+        let list = listStr ? JSON.parse(listStr) : [];
+
+        // 空の場合は同期を試みる
+        if (!Array.isArray(list) || list.length === 0) {
+            console.log('ユーザーリストが空のため、サーバーから同期を試みます...');
+            await syncUsers();
+            listStr = localStorage.getItem('user_list');
+            list = listStr ? JSON.parse(listStr) : [];
+        }
+
+        return Array.isArray(list) ? list : [];
+    },
+    saveCBODataToGAS,
+    fetchCBODataFromGAS,
+    getLateChecks,
+    getLateChecksMonthly,
+    saveLateCheck,
+    getPaidLeaveBalance,
+    savePaidLeaveBalance,
+    exportAllData,
+    importData
+};

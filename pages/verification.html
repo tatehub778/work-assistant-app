@@ -130,8 +130,15 @@
                 <ul>
                     <li>CBOからダウンロードしたCSVファイルをアップロードしてください。</li>
                     <li>アプリ内の申請データ（有給、代休、遅刻早退）と突き合わせを行います。</li>
-                    <li>結果は「不整合」「未報告（CSVのみ）」「アプリのみ」に分類されます。</li>
+                    <li>月を選択すると、その月のデータのみを対象に照合します。</li>
                 </ul>
+            </div>
+
+            <div class="filter-area"
+                style="text-align: center; margin-bottom: 20px; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <label for="monthFilter" style="font-weight: bold; margin-right: 10px;">対象月:</label>
+                <input type="month" id="monthFilter"
+                    style="padding: 8px; font-size: 16px; border: 1px solid #ddd; border-radius: 5px;">
             </div>
 
             <div class="upload-area" id="uploadArea">
@@ -144,6 +151,10 @@
 
             <div id="loading" style="display: none; text-align: center; padding: 20px;">
                 <p>⏳ 照合中...</p>
+            </div>
+
+            <div id="lateHistoryResults" class="result-section">
+                <!-- 遅刻履歴がここに挿入されます -->
             </div>
 
             <div id="results" class="result-section">
