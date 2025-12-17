@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4A90E2">
+    <title>現場業務アシスタント</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.svg">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>📱 現場業務アシスタント</h1>
+            <p class="date" id="currentDate"></p>
+
+            <div style="text-align: right; margin-top: 10px;">
+                <button id="syncBtn"
+                    style="padding: 5px 15px; font-size: 14px; background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.5); border-radius: 20px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                    🔄 データを同期 (サーバーから取得)
+                </button>
+            </div>
+
+            <div id="currentUserDisplay"
+                style="margin-top: 10px; padding: 10px; background: rgba(255,255,255,0.2); border-radius: 8px; display: none;">
+                <span style="font-size: 14px;">👤 </span>
+                <span id="currentUserName" style="font-weight: 600;"></span>
+                <a href="pages/user-select.html"
+                    style="color: white; text-decoration: underline; margin-left: 10px; font-size: 14px;">変更</a>
+            </div>
+        </header>
+
+        <main>
+
+            <!-- 注意書きボックス -->
+            <div class="notice-box">
+                <h3>■ルール</h3>
+                <ul>
+                    <li>「中抜け1時間程度まで」「朝礼に間に合う程度の遅刻まで」は、従来通りLINEに一言でOK。<br>こちらにもCBOにも記入する必要はありません。</li>
+                    <li>有給や代休は、従来通り事務に口頭で言ってもらってもいいですが、できればご自身でこちらから申請してください。</li>
+                </ul>
+            </div>
+
+            <section class="menu-section">
+                <h2>👤 勤怠関連</h2>
+                <div class="menu-grid">
+                    <a href="pages/late-early.html" class="menu-item">
+                        <span class="icon">🕐</span>
+                        <span class="label">遅刻/早退/中抜け</span>
+                    </a>
+                    <a href="pages/paid-leave.html" class="menu-item">
+                        <span class="icon">🏖️</span>
+                        <span class="label">有給申請</span>
+                    </a>
+                    <a href="pages/compensatory-leave.html" class="menu-item">
+                        <span class="icon">📅</span>
+                        <span class="label">代休申請</span>
+                    </a>
+                    <a href="pages/user-management.html" class="menu-item">
+                        <span class="icon">👥</span>
+                        <span class="label">社員リスト設定</span>
+                    </a>
+                </div>
+            </section>
+
+            <section class="menu-section">
+                <h2>⚙️ 作業関連</h2>
+                <div class="menu-grid">
+                    <a href="pages/night-shift.html" class="menu-item">
+                        <span class="icon">📋</span>
+                        <span class="label">夜勤申請シート</span>
+                    </a>
+                    <a href="pages/night-shift-generate.html" class="menu-item">
+                        <span class="icon">📄</span>
+                        <span class="label">過去データから再生成</span>
+                    </a>
+                </div>
+            </section>
+
+            <section class="menu-section">
+                <h2>📊 データ管理</h2>
+                <div class="menu-grid">
+                    <a href="pages/history.html" class="menu-item">
+                        <span class="icon">📊</span>
+                        <span class="label">データ一覧</span>
+                    </a>
+                    <a href="pages/export.html" class="menu-item">
+                        <span class="icon">💾</span>
+                        <span class="label">CSV出力</span>
+                    </a>
+                    <a href="pages/verification.html" class="menu-item">
+                        <span class="icon">🔍</span>
+                        <span class="label">CBOデータ照合</span>
+                    </a>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>© 現場業務アシスタント</p>
+        </footer>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>

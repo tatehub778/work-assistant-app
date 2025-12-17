@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>夜勤メンバー指示</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">👥 夜勤メンバー指示</h1>
+
+            <div class="form-group">
+                <label for="instructionDate">夜勤作業日</label>
+                <input type="date" id="instructionDate" required>
+            </div>
+
+            <div class="form-group">
+                <label>メンバー選択と時間指示</label>
+                <div class="alert alert-info">
+                    💡 チェックを入れたメンバーの早出・残業時間を入力してください
+                </div>
+            </div>
+
+            <ul class="checkbox-list" id="memberList">
+                <!-- JavaScriptで動的生成 -->
+            </ul>
+
+            <div class="form-group">
+                <button type="button" class="btn btn-secondary" id="addMemberBtn">+ メンバー追加</button>
+            </div>
+
+            <button type="button" class="btn btn-primary" id="copyToLine">📋 LINEグループに投稿</button>
+            <button type="button" class="btn btn-secondary" id="saveOnly">💾 保存のみ</button>
+            <a href="../index.html" class="btn btn-back">戻る</a>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // 今日の日付をデフォルト設定
+        document.getElementById('instructionDate').valueAsDate = new Date();
+
+        // デフォルトメンバー（LocalStorageに保存してあれば復元）
+        let members = JSON.parse(localStorage.getItem('team_members')) || [
+            '田中太郎',
+            '佐藤花子',
+            '鈴木一郎',
+            '高橋次郎',
+            '渡辺三郎'
+        ];
+
+        // メンバーリストを描画
+        function renderMemberList() {
+            const list = document.getElementById('memberList');
+            list.innerHTML = '';
+
+            members.forEach((member, index) => {
+                const li = document.createElement('li');
+                li.className = 'checkbox-item';
+                li.innerHTML = `
+                    <input type="checkbox" id="member${index}" value="${member}">
+                    <label for="member${index}">${member}</label>
+                    <div class="time-inputs">
+                        <input type="number" id="early${index}" min="0" max="8" step="0.5" placeholder="早出" title="早出時間">
+                        <input type="number" id="overtime${index}" min="0" max="8" step="0.5" placeholder="残業" title="残業時間">
+                    </div>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        // 初期描画
+        renderMemberList();
+
+        // メンバー追加
+        document.getElementById('addMemberBtn').addEventListener('click', function () {
+            const name = prompt('メンバー名を入力してください');
+            if (name && name.trim()) {
+                members.push(name.trim());
+                localStorage.setItem('team_members', JSON.stringify(members));
+                renderMemberList();
+            }
+        });
+
+        // LINEに投稿
+        document.getElementById('copyToLine').addEventListener('click', function () {
+            const date = document.getElementById('instructionDate').value;
+            if (!date) {
+                alert('日付を選択してください');
+                return;
+            }
+
+            const instructions = [];
+            members.forEach((member, index) => {
+                const checkbox = document.getElementById(`member${index}`);
+                if (checkbox.checked) {
+                    const early = document.getElementById(`early${index}`).value || 0;
+                    const overtime = document.getElementById(`overtime${index}`).value || 0;
+
+                    let instruction = `・${member}:`;
+                    const parts = [];
+                    if (parseFloat(early) > 0) {
+                        parts.push(`早出${early}時間`);
+                    }
+                    if (parseFloat(overtime) > 0) {
+                        parts.push(`残業${overtime}時間`);
+                    }
+                    if (parts.length === 0) {
+                        parts.push('通常勤務');
+                    }
+                    instruction += ' ' + parts.join('、');
+
+                    instructions.push({
+                        member: member,
+                        early: parseFloat(early),
+                        overtime: parseFloat(overtime),
+                        text: instruction
+                    });
+                }
+            });
+
+            if (instructions.length === 0) {
+                alert('メンバーを選択してください');
+                return;
+            }
+
+            // データを保存
+            const data = {
+                date: date,
+                instructions: instructions,
+                category: '夜勤メンバー指示'
+            };
+            saveData(STORAGE_KEYS.TEAM_INSTRUCTIONS, data);
+
+            // LINE投稿用テキスト生成
+            let lineText = `【夜勤作業 ${formatDate(date)}】\n`;
+            instructions.forEach(inst => {
+                lineText += inst.text + '\n';
+            });
+
+            // LINEにコピーして開く
+            copyToLineAndOpen(lineText);
+        });
+
+        // 保存のみ
+        document.getElementById('saveOnly').addEventListener('click', function () {
+            const date = document.getElementById('instructionDate').value;
+            if (!date) {
+                alert('日付を選択してください');
+                return;
+            }
+
+            const instructions = [];
+            members.forEach((member, index) => {
+                const checkbox = document.getElementById(`member${index}`);
+                if (checkbox.checked) {
+                    const early = document.getElementById(`early${index}`).value || 0;
+                    const overtime = document.getElementById(`overtime${index}`).value || 0;
+
+                    instructions.push({
+                        member: member,
+                        early: parseFloat(early),
+                        overtime: parseFloat(overtime)
+                    });
+                }
+            });
+
+            if (instructions.length === 0) {
+                alert('メンバーを選択してください');
+                return;
+            }
+
+            const data = {
+                date: date,
+                instructions: instructions,
+                category: '夜勤メンバー指示'
+            };
+            saveData(STORAGE_KEYS.TEAM_INSTRUCTIONS, data);
+            alert('✅ データを保存しました');
+        });
+    </script>
+</body>
+
+</html>

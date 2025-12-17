@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>夜勤申請書下書き</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">📋 夜勤申請書下書き</h1>
+
+            <div class="alert alert-info">
+                💡 夜勤情報を一時保存し、後でPDF生成ページへ引き継げます
+            </div>
+
+            <div style="margin-bottom: 20px; border-bottom: 1px solid #ddd;">
+                <button class="tab-btn active" onclick="switchTab('new')" id="tabNew">新規作成</button>
+                <button class="tab-btn" onclick="switchTab('list')" id="tabList">下書き一覧</button>
+            </div>
+
+            <!-- 新規作成タブ -->
+            <div id="contentNew" class="tab-content active">
+                <form id="nightShiftForm">
+                    <div class="form-group">
+                        <label for="shiftDate">夜勤日付</label>
+                        <input type="date" id="shiftDate" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="client">元請け</label>
+                        <input type="text" id="client" placeholder="例: エイジング株" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="siteName">現場名</label>
+                        <input type="text" id="siteName" placeholder="例: アメリー" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">場所</label>
+                        <input type="text" id="location" placeholder="例: スタジオスケルトン" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="manager">担当者</label>
+                        <input type="text" id="manager" placeholder="例: 小山様" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="departureTime">出発予定時刻</label>
+                        <input type="time" id="departureTime" value="18:00" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="workStartTime">作業開始時刻</label>
+                        <input type="time" id="workStartTime" value="20:00" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="returnTime">帰社予定時刻</label>
+                        <input type="time" id="returnTime" value="24:00" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="supervisor">管理者</label>
+                        <input type="text" id="supervisor" placeholder="例: 田中" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="memberCount">自社予定人数</label>
+                        <input type="number" id="memberCount" min="1" value="4" required>
+                    </div>
+
+                    <h3>作業メンバー情報</h3>
+                    <div id="memberInputs">
+                        <!-- JavaScriptで動的生成 -->
+                    </div>
+
+                    <div style="margin-top: 30px; display: flex; gap: 15px;">
+                        <button type="button" class="btn btn-secondary" id="saveDraftBtn">💾 下書き保存</button>
+                        <button type="button" class="btn btn-primary" id="generateBtn">➡️ 生成ページへ</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 下書き一覧タブ -->
+            <div id="contentList" class="tab-content">
+                <div id="draftsList">
+                    <!-- JavaScriptで動的生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        let editingDraftId = null;
+
+        // 今日の日付をデフォルト設定
+        document.getElementById('shiftDate').valueAsDate = new Date();
+
+        // タブ切り替え
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+
+            if (tabName === 'new') {
+                document.getElementById('contentNew').classList.add('active');
+                document.getElementById('tabNew').classList.add('active');
+            } else {
+                document.getElementById('contentList').classList.add('active');
+                document.getElementById('tabList').classList.add('active');
+                loadDrafts();
+            }
+        }
+
+        // メンバー入力欄を動的生成
+        function updateMemberInputs() {
+            const count = parseInt(document.getElementById('memberCount').value) || 0;
+            const container = document.getElementById('memberInputs');
+            container.innerHTML = '';
+
+            for (let i = 0; i < count; i++) {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'form-group';
+                memberDiv.style.border = '1px solid #e0e0e0';
+                memberDiv.style.padding = '15px';
+                memberDiv.style.borderRadius = '8px';
+                memberDiv.style.marginBottom = '10px';
+
+                memberDiv.innerHTML = `
+                    <h4>メンバー ${i + 1}</h4>
+                    <label>名前</label>
+                    <input type="text" class="member-name" placeholder="例: 田中さん" required>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" class="member-direct-return"> 直帰
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; margin-left: 10px;">
+                            <input type="checkbox" class="member-has-pre-overtime" onchange="togglePreInput(this)"> 現場前残業あり
+                        </label>
+                    </div>
+
+                    <!-- 現場前残業入力エリア -->
+                    <div class="pre-overtime-area" style="display: none; background: #f9f9f9; padding: 10px; margin-top: 5px; border-radius: 4px;">
+                        <span style="font-size: 12px; font-weight: bold;">現場前残業（事務所/工場）</span>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">開始</label>
+                                <input type="time" class="pre-start">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">終了</label>
+                                <input type="time" class="pre-end">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩開始</label>
+                                <input type="time" class="pre-break-start">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩終了</label>
+                                <input type="time" class="pre-break-end">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <label>休憩時間（分）</label>
+                            <input type="number" class="member-break" min="0" value="0" placeholder="例: 60">
+                        </div>
+                        <div style="flex: 1;">
+                            <label>残業時間（時間）</label>
+                            <input type="number" class="member-overtime" min="0" step="0.5" value="0" placeholder="例: 2">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" class="member-direct-return"> 直帰
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <label>休憩開始</label>
+                            <input type="time" class="member-break-start">
+                        </div>
+                        <div style="flex: 1;">
+                            <label>休憩終了</label>
+                            <input type="time" class="member-break-end">
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(memberDiv);
+            }
+        }
+
+        // 人数変更時にメンバー入力欄を更新
+        document.getElementById('memberCount').addEventListener('change', updateMemberInputs);
+
+        // 初期表示
+        updateMemberInputs();
+
+        // 現場前残業の表示切り替え
+        window.togglePreInput = function (checkbox) {
+            const area = checkbox.closest('.form-group').querySelector('.pre-overtime-area');
+            area.style.display = checkbox.checked ? 'block' : 'none';
+        };
+
+        // フォームデータを収集
+        function collectFormData() {
+            const members = [];
+            const memberNames = document.querySelectorAll('.member-name');
+            const memberBreaks = document.querySelectorAll('.member-break');
+            const memberOvertimes = document.querySelectorAll('.member-overtime');
+            const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+
+            // 現場前残業フィールド
+            const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+            const memberPreStarts = document.querySelectorAll('.pre-start');
+            const memberPreEnds = document.querySelectorAll('.pre-end');
+            const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+            const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+
+            const memberBreakStarts = document.querySelectorAll('.member-break-start');
+            const memberBreakEnds = document.querySelectorAll('.member-break-end');
+
+            memberNames.forEach((nameInput, index) => {
+                members.push({
+                    name: nameInput.value,
+                    breakTime: parseInt(memberBreaks[index].value) || 0,
+                    overtime: parseFloat(memberOvertimes[index].value) || 0,
+                    directReturn: memberDirectReturns[index].checked,
+                    preSiteOvertime: {
+                        hasOvertime: memberHasPre[index].checked,
+                        startTime: memberPreStarts[index].value,
+                        endTime: memberPreEnds[index].value,
+                        breakStart: memberPreBreakStarts[index].value,
+                        breakEnd: memberPreBreakEnds[index].value
+                    },
+                    breakStart: memberBreakStarts[index].value,
+                    breakEnd: memberBreakEnds[index].value
+                });
+            });
+
+            return {
+                shiftDate: document.getElementById('shiftDate').value,
+                client: document.getElementById('client').value,
+                siteName: document.getElementById('siteName').value,
+                location: document.getElementById('location').value,
+                manager: document.getElementById('manager').value,
+                departureTime: document.getElementById('departureTime').value,
+                workStartTime: document.getElementById('workStartTime').value,
+                returnTime: document.getElementById('returnTime').value,
+                supervisor: document.getElementById('supervisor').value,
+                memberCount: document.getElementById('memberCount').value,
+                members: members
+            };
+        }
+
+        // 下書き保存
+        document.getElementById('saveDraftBtn').addEventListener('click', function () {
+            if (!document.getElementById('nightShiftForm').checkValidity()) {
+                alert('必須項目を入力してください');
+                return;
+            }
+
+            const data = collectFormData();
+
+            if (editingDraftId) {
+                // 既存下書きを更新
+                updateDraft(editingDraftId, data);
+                alert('✅ 下書きを更新しました');
+                editingDraftId = null;
+            } else {
+                // 新規下書き保存
+                const draftId = saveDraft(data);
+                if (draftId) {
+                    alert('✅ 下書きを保存しました');
+                } else {
+                    alert('❌ 保存に失敗しました');
+                }
+            }
+
+            // フォームをリセット
+            document.getElementById('nightShiftForm').reset();
+            document.getElementById('shiftDate').valueAsDate = new Date();
+            updateMemberInputs();
+        });
+
+        // 申請書生成（準備版 - 実際の生成ページへ遷移）
+        document.getElementById('generateBtn').addEventListener('click', function () {
+            if (!document.getElementById('nightShiftForm').checkValidity()) {
+                alert('必須項目を入力してください');
+                return;
+            }
+
+            const data = collectFormData();
+
+            // データをセッションストレージに保存して生成ページへ
+            sessionStorage.setItem('nightShiftData', JSON.stringify(data));
+            window.location.href = 'night-shift-generate.html';
+        });
+
+        // 下書き一覧を読み込み
+        function loadDrafts() {
+            const drafts = getDrafts();
+            const container = document.getElementById('draftsList');
+
+            if (drafts.length === 0) {
+                container.innerHTML = '<div class="alert alert-warning">下書きがありません</div>';
+                return;
+            }
+
+            container.innerHTML = '';
+
+            drafts.forEach(draft => {
+                const card = document.createElement('div');
+                card.className = 'alert alert-info';
+                card.style.marginBottom = '15px';
+
+                const date = new Date(draft.shiftDate);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+
+                card.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>${dateStr} ${draft.client} - ${draft.siteName}</strong><br>
+                            <small>作成: ${new Date(draft.createdAt).toLocaleString('ja-JP')}</small><br>
+                            <small>メンバー: ${draft.memberCount}名</small>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-secondary" onclick="editDraft(${draft.id})" style="width: auto; padding: 10px 20px;">編集</button>
+                            <button class="btn btn-primary" onclick="generateFromDraft(${draft.id})" style="width: auto; padding: 10px 20px;">生成</button>
+                            <button class="btn btn-back" onclick="deleteDraftConfirm(${draft.id})" style="width: auto; padding: 10px 20px;">削除</button>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // 下書きを編集
+        function editDraft(id) {
+            const draft = getDraft(id);
+            if (!draft) return;
+
+            // フォームに値を設定
+            document.getElementById('shiftDate').value = draft.shiftDate;
+            document.getElementById('client').value = draft.client;
+            document.getElementById('siteName').value = draft.siteName;
+            document.getElementById('location').value = draft.location;
+            document.getElementById('manager').value = draft.manager;
+            document.getElementById('departureTime').value = draft.departureTime;
+            document.getElementById('workStartTime').value = draft.workStartTime;
+            document.getElementById('returnTime').value = draft.returnTime;
+            document.getElementById('supervisor').value = draft.supervisor;
+            document.getElementById('memberCount').value = draft.memberCount;
+
+            updateMemberInputs();
+
+            // メンバー情報を設定
+            setTimeout(() => {
+                const memberNames = document.querySelectorAll('.member-name');
+                const memberBreaks = document.querySelectorAll('.member-break');
+                const memberOvertimes = document.querySelectorAll('.member-overtime');
+                const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+
+                const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+                const memberPreStarts = document.querySelectorAll('.pre-start');
+                const memberPreEnds = document.querySelectorAll('.pre-end');
+                const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+                const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+
+                const memberBreakStarts = document.querySelectorAll('.member-break-start');
+                const memberBreakEnds = document.querySelectorAll('.member-break-end');
+
+                draft.members.forEach((member, index) => {
+                    if (memberNames[index]) memberNames[index].value = member.name;
+                    if (memberBreaks[index]) memberBreaks[index].value = member.breakTime || 0;
+                    if (memberOvertimes[index]) memberOvertimes[index].value = member.overtime || 0;
+                    if (memberDirectReturns[index]) memberDirectReturns[index].checked = member.directReturn || false;
+
+                    if (member.preSiteOvertime) {
+                        if (memberHasPre[index]) {
+                            memberHasPre[index].checked = member.preSiteOvertime.hasOvertime;
+                            togglePreInput(memberHasPre[index]);
+                        }
+                        if (memberPreStarts[index]) memberPreStarts[index].value = member.preSiteOvertime.startTime || '';
+                        if (memberPreEnds[index]) memberPreEnds[index].value = member.preSiteOvertime.endTime || '';
+                        if (memberPreBreakStarts[index]) memberPreBreakStarts[index].value = member.preSiteOvertime.breakStart || '';
+                        if (memberPreBreakEnds[index]) memberPreBreakEnds[index].value = member.preSiteOvertime.breakEnd || '';
+                    }
+
+                    if (memberBreakStarts[index]) memberBreakStarts[index].value = member.breakStart || '';
+                    if (memberBreakEnds[index]) memberBreakEnds[index].value = member.breakEnd || '';
+                });
+            }, 100);
+
+            editingDraftId = id;
+            switchTab('new');
+        }
+
+        // 下書きから生成
+        function generateFromDraft(id) {
+            const draft = getDraft(id);
+            if (!draft) return;
+
+            // データをセッションストレージに保存
+            sessionStorage.setItem('nightShiftData', JSON.stringify(draft));
+            window.location.href = 'night-shift-generate.html';
+        }
+
+        // 下書き削除確認
+        function deleteDraftConfirm(id) {
+            if (confirm('この下書きを削除しますか？')) {
+                deleteDraft(id);
+                loadDrafts();
+                alert('✅ 下書きを削除しました');
+            }
+        }
+
+        // ページ読み込み時に下書き一覧を初期化
+        document.addEventListener('DOMContentLoaded', function () {
+            // タブ管理のCSS追加
+            const style = document.createElement('style');
+            style.textContent = `
+                .tab-btn {
+                    padding: 12px 24px;
+                    border: none;
+                    background: #f8f9fa;
+                    cursor: pointer;
+                    font-size: 16px;
+                    transition: all 0.3s;
+                    border-bottom: 3px solid transparent;
+                }
+                .tab-btn.active {
+                    background: white;
+                    border-bottom: 3px solid #4A90E2;
+                    font-weight: bold;
+                }
+                .tab-btn:hover {
+                    background: #e9ecef;
+                }
+                .tab-content {
+                    display: none;
+                }
+                .tab-content.active {
+                    display: block;
+                }
+            `;
+            document.head.appendChild(style);
+        });
+    </script>
+</body>
+
+</html>

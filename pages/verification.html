@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBOデータ照合</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .verification-container {
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 30px;
+            text-align: center;
+            background: #f9f9f9;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .upload-area.dragover {
+            border-color: #4A90E2;
+            background: #eef6ff;
+        }
+
+        .result-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .result-header {
+            padding: 15px;
+            background: #f1f3f5;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-header.error {
+            background: #ffe3e3;
+            color: #c92a2a;
+        }
+
+        .result-header.warning {
+            background: #fff3bf;
+            color: #d9480f;
+        }
+
+        .result-header.success {
+            background: #d3f9d8;
+            color: #2b8a3e;
+        }
+
+        .result-content {
+            padding: 15px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .badge-missing-app {
+            background: #fa5252;
+        }
+
+        /* CSVにあるがアプリにない */
+        .badge-missing-csv {
+            background: #fab005;
+        }
+
+        /* アプリにあるがCSVにない */
+        .badge-mismatch {
+            background: #e64980;
+        }
+
+        /* 内容不一致 */
+        .badge-match {
+            background: #40c057;
+        }
+
+        /* 一致 */
+
+        table.diff-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        table.diff-table th,
+        table.diff-table td {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container" style="max-width: 800px;">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="verification-container">
+            <h1 class="page-title">🔍 CBOデータ照合</h1>
+
+            <div class="notice-box">
+                <h3>■使い方</h3>
+                <ul>
+                    <li>CBOからダウンロードしたCSVファイルをアップロードしてください。</li>
+                    <li>アプリ内の申請データ（有給、代休、遅刻早退）と突き合わせを行います。</li>
+                    <li>結果は「不整合」「未報告（CSVのみ）」「アプリのみ」に分類されます。</li>
+                </ul>
+            </div>
+
+            <div class="upload-area" id="uploadArea">
+                <p>ここにCSVファイルをドラッグ＆ドロップ</p>
+                <p>または</p>
+                <input type="file" id="csvInput" accept=".csv" style="display: none;">
+                <button class="btn btn-secondary" onclick="document.getElementById('csvInput').click()"
+                    style="width: auto; display: inline-block;">ファイルを選択</button>
+            </div>
+
+            <div id="loading" style="display: none; text-align: center; padding: 20px;">
+                <p>⏳ 照合中...</p>
+            </div>
+
+            <div id="results" class="result-section">
+                <!-- 結果がここに挿入されます -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/iconv-lite/0.6.3/iconv-lite.min.js"></script>
+    <!-- CSV文字コード変換用(CDNが使えない場合は自前実装が必要だが、今回は簡易的にTextDecoderを使う) -->
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script src="../js/verification.js"></script>
+</body>
+
+</html>

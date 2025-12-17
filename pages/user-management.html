@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社員リスト管理</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .user-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .user-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: white;
+            padding: 12px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-name {
+            font-size: 16px;
+            font-weight: bold;
+            flex-grow: 1;
+            margin-left: 10px;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .btn-icon {
+            background: #f1f2f6;
+            border: none;
+            border-radius: 4px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .btn-icon:hover {
+            background: #dfe4ea;
+        }
+
+        .btn-delete {
+            background: #ffeaa7;
+            color: #d63031;
+        }
+
+        .btn-delete:hover {
+            background: #fab1a0;
+        }
+
+        .add-user-form {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .add-user-form input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">👥 社員リスト管理</h1>
+            <p style="font-size: 14px; color: #666; margin-bottom: 20px;">
+                報告時の選択肢に表示される社員リストを管理します。<br>
+                退職者の削除や、表示順の変更が可能です。
+            </p>
+
+            <form id="addUserForm" class="add-user-form">
+                <input type="text" id="newUserName" placeholder="新しい社員名を入力" required>
+                <button type="submit" class="btn btn-primary" style="white-space: nowrap;">追加</button>
+            </form>
+
+            <ul id="userList" class="user-list">
+                <!-- JavaScriptで動的生成 -->
+            </ul>
+
+            <div style="margin-top: 20px;">
+                <button id="saveOrderBtn" class="btn btn-secondary" style="display: none;">順序を保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script>
+        const USER_LIST_KEY = 'user_list';
+
+        // ユーザーリストの読み込み
+        function loadUsers() {
+            const users = JSON.parse(localStorage.getItem(USER_LIST_KEY) || '[]');
+            renderUserList(users);
+        }
+
+        // ユーザーリストの表示
+        function renderUserList(users) {
+            const listEl = document.getElementById('userList');
+            listEl.innerHTML = '';
+
+            if (users.length === 0) {
+                listEl.innerHTML = '<li style="text-align: center; padding: 20px; color: #999;">社員が登録されていません</li>';
+                return;
+            }
+
+            users.forEach((user, index) => {
+                const li = document.createElement('li');
+                li.className = 'user-item';
+                li.innerHTML = `
+                    <div class="action-buttons">
+                        <button class="btn-icon" onclick="moveUser(${index}, -1)" ${index === 0 ? 'disabled' : ''}>⬆️</button>
+                        <button class="btn-icon" onclick="moveUser(${index}, 1)" ${index === users.length - 1 ? 'disabled' : ''}>⬇️</button>
+                    </div>
+                    <span class="user-name">${user}</span>
+                    <button class="btn-icon btn-delete" onclick="deleteUser(${index})">🗑️</button>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        // ユーザー追加
+        document.getElementById('addUserForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const input = document.getElementById('newUserName');
+            const name = input.value.trim();
+
+            if (name) {
+                const users = JSON.parse(localStorage.getItem(USER_LIST_KEY) || '[]');
+                if (users.includes(name)) {
+                    alert('この名前は既に登録されています');
+                    return;
+                }
+                users.push(name);
+                saveUsers(users);
+                input.value = '';
+            }
+        });
+
+        // ユーザー削除
+        window.deleteUser = function (index) {
+            if (confirm('この社員をリストから削除しますか？\n（過去のデータは消えません）')) {
+                const users = JSON.parse(localStorage.getItem(USER_LIST_KEY) || '[]');
+                users.splice(index, 1);
+                saveUsers(users);
+            }
+        };
+
+        // ユーザー移動 (順序変更)
+        window.moveUser = function (index, direction) {
+            const users = JSON.parse(localStorage.getItem(USER_LIST_KEY) || '[]');
+            const newIndex = index + direction;
+
+            if (newIndex >= 0 && newIndex < users.length) {
+                const temp = users[index];
+                users[index] = users[newIndex];
+                users[newIndex] = temp;
+                saveUsers(users);
+            }
+        };
+
+        // 保存処理
+        async function saveUsers(users) {
+            // storage.jsの関数を呼び出し（サーバー同期含む）
+            await saveUserList(users);
+            renderUserList(users);
+        }
+
+        // 初期表示
+        loadUsers();
+    </script>
+</body>
+
+</html>

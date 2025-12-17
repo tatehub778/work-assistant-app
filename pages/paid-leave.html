@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>有給申請</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">🏖️ 有給申請</h1>
+
+            <form id="paidLeaveForm">
+                <div class="form-group">
+                    <label for="userNameSelect">氏名</label>
+                    <select id="userNameSelect" required>
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="startDate">開始日</label>
+                    <input type="date" id="startDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="endDate">終了日</label>
+                    <input type="date" id="endDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="days">日数</label>
+                    <select id="days" required>
+                        <option value="0.5">半日</option>
+                        <option value="1">1日</option>
+                        <option value="2">2日</option>
+                        <option value="3">3日</option>
+                        <option value="4">4日</option>
+                        <option value="5">5日</option>
+                        <option value="custom">その他</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="customDaysGroup" style="display: none;">
+                    <label for="customDays">日数を入力</label>
+                    <input type="number" id="customDays" min="0.5" step="0.5" placeholder="例: 7">
+                </div>
+
+                <div class="form-group">
+                    <label for="reason">理由</label>
+                    <select id="reason" required>
+                        <option value="">選択してください</option>
+                        <option value="私用">私用</option>
+                        <option value="通院">通院</option>
+                        <option value="家族の用事">家族の用事</option>
+                        <option value="冠婚葬祭">冠婚葬祭</option>
+                        <option value="リフレッシュ">リフレッシュ</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="otherReasonGroup" style="display: none;">
+                    <label for="otherReason">理由の詳細</label>
+                    <input type="text" id="otherReason" placeholder="理由を入力してください">
+                </div>
+
+                <button type="submit" class="btn btn-primary">📋 LINEグループに投稿</button>
+                <button type="button" class="btn btn-secondary" id="saveOnly">💾 保存のみ</button>
+                <a href="../index.html" class="btn btn-back">戻る</a>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // ユーザーリストの読み込みと設定
+        function setupUserSelect() {
+            const users = JSON.parse(localStorage.getItem('user_list') || '[]');
+            const currentUser = localStorage.getItem('current_user');
+            const select = document.getElementById('userNameSelect');
+
+            select.innerHTML = '<option value="">選択してください</option>';
+
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                select.appendChild(option);
+            });
+
+            if (currentUser) {
+                if (users.includes(currentUser)) {
+                    select.value = currentUser;
+                } else {
+                    const option = document.createElement('option');
+                    option.value = currentUser;
+                    option.textContent = currentUser;
+                    select.appendChild(option);
+                    select.value = currentUser;
+                }
+            }
+        }
+
+        // 今日の日付をデフォルト設定
+        const today = new Date();
+        document.getElementById('startDate').valueAsDate = today;
+        document.getElementById('endDate').valueAsDate = today;
+        setupUserSelect();
+
+        // 日数が「その他」の場合、カスタム入力欄を表示
+        document.getElementById('days').addEventListener('change', function () {
+            const customGroup = document.getElementById('customDaysGroup');
+            if (this.value === 'custom') {
+                customGroup.style.display = 'block';
+                document.getElementById('customDays').required = true;
+            } else {
+                customGroup.style.display = 'none';
+                document.getElementById('customDays').required = false;
+            }
+        });
+
+        // 理由が「その他」の場合、詳細入力欄を表示
+        document.getElementById('reason').addEventListener('change', function () {
+            const otherGroup = document.getElementById('otherReasonGroup');
+            if (this.value === 'その他') {
+                otherGroup.style.display = 'block';
+                document.getElementById('otherReason').required = true;
+            } else {
+                otherGroup.style.display = 'none';
+                document.getElementById('otherReason').required = false;
+            }
+        });
+
+        // フォーム送信（LINEに投稿）
+        document.getElementById('paidLeaveForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const userName = document.getElementById('userNameSelect').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            let days = document.getElementById('days').value;
+            let reason = document.getElementById('reason').value;
+
+            if (!userName) {
+                alert('氏名を選択してください');
+                return;
+            }
+
+            if (days === 'custom') {
+                days = document.getElementById('customDays').value;
+            }
+
+            if (reason === 'その他') {
+                reason = document.getElementById('otherReason').value;
+            }
+
+            const data = {
+                userName: userName,
+                startDate: startDate,
+                endDate: endDate,
+                days: parseFloat(days),
+                reason: reason,
+                category: '有給申請'
+            };
+
+            // データを保存
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+
+            // LINE投稿用テキスト生成
+            let lineText = `【有給申請】\n氏名: ${userName}\n`;
+            if (startDate === endDate) {
+                lineText += `日付: ${formatDate(startDate)}\n`;
+            } else {
+                lineText += `期間: ${formatDate(startDate)} 〜 ${formatDate(endDate)}\n`;
+            }
+            lineText += `日数: ${days}日\n理由: ${reason}`;
+
+            // LINEにコピーして開く
+            copyToLineAndOpen(lineText);
+
+            // フォームをリセット
+            setTimeout(() => {
+                this.reset();
+                const today = new Date();
+                document.getElementById('startDate').valueAsDate = today;
+                document.getElementById('endDate').valueAsDate = today;
+            }, 1000);
+        });
+
+        // 保存のみ
+        document.getElementById('saveOnly').addEventListener('click', function () {
+            const userName = document.getElementById('userNameSelect').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            let days = document.getElementById('days').value;
+            let reason = document.getElementById('reason').value;
+
+            if (days === 'custom') {
+                days = document.getElementById('customDays').value || days;
+            }
+
+            if (reason === 'その他') {
+                reason = document.getElementById('otherReason').value || reason;
+            }
+
+            if (!userName || !startDate || !endDate || !days || !reason) {
+                alert('全ての項目を入力してください');
+                return;
+            }
+
+            const data = {
+                userName: userName,
+                startDate: startDate,
+                endDate: endDate,
+                days: parseFloat(days),
+                reason: reason,
+                category: '有給申請'
+            };
+
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+            alert('✅ データを保存しました');
+
+            document.getElementById('paidLeaveForm').reset();
+            const today = new Date();
+            document.getElementById('startDate').valueAsDate = today;
+            document.getElementById('endDate').valueAsDate = today;
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ユーザー選択</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">👤 ユーザー選択</h1>
+
+            <div class="alert alert-info">
+                💡 ご自分の名前を選択してください。申請時に自動的に記入者として記録されます。
+            </div>
+
+            <form id="userSelectForm">
+                <div class="form-group">
+                    <label for="userName">現在のユーザー</label>
+                    <select id="userName" required>
+                        <option value="">選択してください</option>
+                        <!-- JavaScriptで動的生成 -->
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary">✅ 確定する</button>
+            </form>
+
+            <div class="mt-20">
+                <h3>ユーザーリスト管理</h3>
+
+                <div class="form-group">
+                    <label for="newUserName">新しいユーザーを追加</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="newUserName" placeholder="例: 田中太郎" style="flex: 1;">
+                        <button type="button" class="btn btn-secondary" id="addUserBtn"
+                            style="width: auto; padding: 15px 30px;">追加</button>
+                    </div>
+                </div>
+
+                <div id="userList" class="mt-20">
+                    <!-- JavaScriptで動的生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // デフォルトユーザーリスト
+        const DEFAULT_USERS = [
+            '田中太郎',
+            '佐藤花子',
+            '鈴木一郎',
+            '高橋次郎',
+            '渡辺三郎'
+        ];
+
+        // ユーザーリストを取得（初回はデフォルト）
+        function getUserList() {
+            let users = JSON.parse(localStorage.getItem('user_list') || '[]');
+            if (users.length === 0) {
+                users = DEFAULT_USERS;
+                localStorage.setItem('user_list', JSON.stringify(users));
+            }
+            return users;
+        }
+
+        // 現在のユーザーを取得
+        function getCurrentUser() {
+            return localStorage.getItem('current_user') || '';
+        }
+
+        // ユーザーリストを描画
+        function renderUserList() {
+            const users = getUserList();
+            const currentUser = getCurrentUser();
+
+            // ドロップダウンに追加
+            const select = document.getElementById('userName');
+            select.innerHTML = '<option value="">選択してください</option>';
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                if (user === currentUser) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+
+            // ユーザーリスト表示
+            const listDiv = document.getElementById('userList');
+            listDiv.innerHTML = '<h4>登録済みユーザー</h4>';
+            const ul = document.createElement('ul');
+            ul.style.listStyle = 'none';
+            ul.style.padding = '0';
+
+            users.forEach((user, index) => {
+                const li = document.createElement('li');
+                li.style.padding = '10px';
+                li.style.background = '#f8f9fa';
+                li.style.marginBottom = '5px';
+                li.style.borderRadius = '5px';
+                li.style.display = 'flex';
+                li.style.justifyContent = 'space-between';
+                li.style.alignItems = 'center';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = user;
+                if (user === currentUser) {
+                    nameSpan.textContent += ' (現在選択中)';
+                    nameSpan.style.fontWeight = 'bold';
+                    nameSpan.style.color = '#4A90E2';
+                }
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '削除';
+                deleteBtn.className = 'btn btn-back';
+                deleteBtn.style.width = 'auto';
+                deleteBtn.style.padding = '5px 15px';
+                deleteBtn.style.marginBottom = '0';
+                deleteBtn.onclick = () => deleteUser(index);
+
+                li.appendChild(nameSpan);
+                // デフォルトユーザーは削除不可
+                if (users.length > 1) {
+                    li.appendChild(deleteBtn);
+                }
+
+                ul.appendChild(li);
+            });
+
+            listDiv.appendChild(ul);
+        }
+
+        // ユーザーを追加
+        document.getElementById('addUserBtn').addEventListener('click', function () {
+            const newUserName = document.getElementById('newUserName').value.trim();
+
+            if (!newUserName) {
+                alert('ユーザー名を入力してください');
+                return;
+            }
+
+            const users = getUserList();
+
+            if (users.includes(newUserName)) {
+                alert('このユーザー名は既に登録されています');
+                return;
+            }
+
+            users.push(newUserName);
+            localStorage.setItem('user_list', JSON.stringify(users));
+
+            document.getElementById('newUserName').value = '';
+            renderUserList();
+            alert('✅ ユーザーを追加しました');
+        });
+
+        // ユーザーを削除
+        function deleteUser(index) {
+            const users = getUserList();
+            const currentUser = getCurrentUser();
+
+            if (users.length <= 1) {
+                alert('最後のユーザーは削除できません');
+                return;
+            }
+
+            const userName = users[index];
+
+            if (userName === currentUser) {
+                if (!confirm('現在選択中のユーザーです。削除しますか？\n（削除後は再度ユーザーを選択してください）')) {
+                    return;
+                }
+                localStorage.removeItem('current_user');
+            }
+
+            if (confirm(`「${userName}」を削除しますか？`)) {
+                users.splice(index, 1);
+                localStorage.setItem('user_list', JSON.stringify(users));
+                renderUserList();
+                alert('✅ ユーザーを削除しました');
+            }
+        }
+
+        // フォーム送信
+        document.getElementById('userSelectForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const userName = document.getElementById('userName').value;
+
+            if (!userName) {
+                alert('ユーザーを選択してください');
+                return;
+            }
+
+            localStorage.setItem('current_user', userName);
+            alert(`✅ 「${userName}」として操作します`);
+
+            // ホーム画面に戻る
+            setTimeout(() => {
+                window.location.href = '../index.html';
+            }, 500);
+        });
+
+        // 初期描画
+        renderUserList();
+    </script>
+</body>
+
+</html>

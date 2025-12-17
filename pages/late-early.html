@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>遅刻/早退/中抜け申告</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">🕐 遅刻/早退/中抜け申告</h1>
+
+            <!-- 注意書きボックス -->
+            <div class="notice-box">
+                <h3>■ルール</h3>
+                <ul>
+                    <li>「中抜け1時間程度まで」「朝礼に間に合う程度の遅刻まで」は、従来通りLINEに一言でOK。<br>こちらにもCBOにも記入する必要はありません。</li>
+                    <li>有給や代休は、従来通り事務に口頭で言ってもらってもいいですが、できればご自身でこちらから申請してください。</li>
+                </ul>
+            </div>
+
+            <form id="lateEarlyForm">
+                <div class="form-group">
+                    <label for="userNameSelect">氏名</label>
+                    <select id="userNameSelect" required>
+                        <option value="">選択してください</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="type">種別</label>
+                    <select id="type" required>
+                        <option value="遅刻">遅刻</option>
+                        <option value="早退">早退</option>
+                        <option value="中抜け">中抜け</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="date">日付</label>
+                    <input type="date" id="date" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="minutes">時間（分）</label>
+                    <input type="number" id="minutes" min="1" placeholder="例: 30" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="reason">理由</label>
+                    <select id="reason" required>
+                        <option value="">選択してください</option>
+                        <option value="寝坊">寝坊</option>
+                        <option value="電車遅延">電車遅延</option>
+                        <option value="体調不良">体調不良</option>
+                        <option value="家庭/子供の事情">家庭/子供の事情</option>
+                        <option value="病院">病院</option>
+                        <option value="その他">その他（自由記入必須）</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="otherReasonGroup" style="display: none;">
+                    <label for="otherReason">理由の詳細</label>
+                    <input type="text" id="otherReason" placeholder="理由を入力してください">
+                </div>
+
+                <button type="submit" class="btn btn-primary">📋 LINEグループに投稿</button>
+                <button type="button" class="btn btn-secondary" id="saveOnly">💾 保存のみ</button>
+                <a href="../index.html" class="btn btn-back">戻る</a>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // ユーザーリストの読み込みと設定
+        function setupUserSelect() {
+            const users = JSON.parse(localStorage.getItem('user_list') || '[]');
+            const currentUser = localStorage.getItem('current_user');
+            const select = document.getElementById('userNameSelect');
+
+            select.innerHTML = '<option value="">選択してください</option>';
+
+            // リストがあれば追加
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                select.appendChild(option);
+            });
+
+            // 現在のユーザーがリストにある場合は選択、なければ追加して選択
+            if (currentUser) {
+                if (users.includes(currentUser)) {
+                    select.value = currentUser;
+                } else {
+                    const option = document.createElement('option');
+                    option.value = currentUser;
+                    option.textContent = currentUser;
+                    select.appendChild(option);
+                    select.value = currentUser;
+                }
+            }
+        }
+
+        // 初期化
+        document.getElementById('date').valueAsDate = new Date();
+        setupUserSelect();
+
+        // 理由が「その他」の場合、詳細入力欄を表示
+        document.getElementById('reason').addEventListener('change', function () {
+            const otherGroup = document.getElementById('otherReasonGroup');
+            if (this.value === 'その他') {
+                otherGroup.style.display = 'block';
+                document.getElementById('otherReason').required = true;
+            } else {
+                otherGroup.style.display = 'none';
+                document.getElementById('otherReason').required = false;
+            }
+        });
+
+        // フォーム送信（LINEに投稿）
+        document.getElementById('lateEarlyForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const userName = document.getElementById('userNameSelect').value;
+            const type = document.getElementById('type').value;
+            const date = document.getElementById('date').value;
+            const minutes = document.getElementById('minutes').value;
+            let reason = document.getElementById('reason').value;
+
+            if (!userName) {
+                alert('氏名を選択してください');
+                return;
+            }
+
+            if (reason === 'その他') {
+                reason = document.getElementById('otherReason').value;
+            }
+
+            const data = {
+                userName: userName,
+                type: type,
+                date: date,
+                minutes: parseInt(minutes),
+                reason: reason,
+                category: '遅刻早退'
+            };
+
+            // データを保存
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+
+            // LINE投稿用テキスト生成
+            const lineText = `【${type}申告】\n氏名: ${userName}\n日付: ${formatDate(date)}\n時間: ${minutes}分\n理由: ${reason}`;
+
+            // LINEにコピーして開く
+            copyToLineAndOpen(lineText);
+
+            // フォームをリセット
+            setTimeout(() => {
+                this.reset();
+                document.getElementById('date').valueAsDate = new Date();
+                setupUserSelect(); // ユーザー選択状態を戻す
+            }, 1000);
+        });
+
+        // 保存のみ
+        document.getElementById('saveOnly').addEventListener('click', function () {
+            const userName = document.getElementById('userNameSelect').value;
+            const type = document.getElementById('type').value;
+            const date = document.getElementById('date').value;
+            const minutes = document.getElementById('minutes').value;
+            let reason = document.getElementById('reason').value;
+
+            if (reason === 'その他') {
+                reason = document.getElementById('otherReason').value || reason;
+            }
+
+            if (!userName || !date || !minutes || !reason) {
+                alert('全ての項目を入力してください');
+                return;
+            }
+
+            const data = {
+                userName: userName,
+                type: type,
+                date: date,
+                minutes: parseInt(minutes),
+                reason: reason,
+                category: '遅刻早退'
+            };
+
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+            alert('✅ データを保存しました');
+
+            document.getElementById('lateEarlyForm').reset();
+            document.getElementById('date').valueAsDate = new Date();
+            setupUserSelect();
+        });
+    </script>
+</body>
+
+</html>
