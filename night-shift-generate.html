@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>夜勤申請書生成</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        /* プレビュー用のスタイル調整 */
+        #previewArea {
+            width: 100%;
+            overflow-x: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background: #f0f0f0;
+        }
+
+        /* テンプレートはA4縦サイズに固定 */
+        #nightShiftTemplate {
+            width: 210mm;
+            min-height: 297mm;
+            background: white;
+            padding: 15mm;
+            box-sizing: border-box;
+            margin: 0 auto;
+            font-family: 'MS Gothic', 'Meiryo', monospace;
+            /* 印刷時の背景色を強制 */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* タイムラインのセル用スタイル */
+        .timeline-cell {
+            flex: 1;
+            height: 100%;
+            border-right: 1px solid #000;
+            box-sizing: border-box;
+            /* 背景色を印刷させるための設定 */
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">📋 夜勤申請書生成</h1>
+
+            <div class="alert alert-info">
+                💡 夜勤情報を入力すると、申請書PDFまたはPNG画像を自動生成します
+            </div>
+
+            <button type="button" class="btn btn-secondary" id="fillSampleBtn"
+                style="margin-bottom: 20px; background-color: #28a745;">
+                🧪 サンプルデータを入力して確認
+            </button>
+
+            <form id="nightShiftGenerateForm">
+                <div class="form-group">
+                    <label for="shiftDate">夜勤日付</label>
+                    <input type="date" id="shiftDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="client">元請け</label>
+                    <input type="text" id="client" placeholder="例: エイジング株" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="siteName">現場名</label>
+                    <input type="text" id="siteName" placeholder="例: アメリー" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="location">場所</label>
+                    <input type="text" id="location" placeholder="例: スタジオスケルトン" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="manager">担当者</label>
+                    <input type="text" id="manager" placeholder="例: 小山様" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="departureTime">出発予定時刻</label>
+                    <input type="time" id="departureTime" value="18:00" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="workStartTime">作業開始時刻（現場到着）</label>
+                    <input type="time" id="workStartTime" value="20:00" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="siteLeaveTime">現場終了時刻（現場出発）</label>
+                    <input type="time" id="siteLeaveTime" value="23:00" required>
+                    <small style="color: #666;">※現場のタイムライン色付けに使用します</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="returnTime">帰社予定時刻</label>
+                    <input type="time" id="returnTime" value="24:00" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="supervisor">管理者</label>
+                    <input type="text" id="supervisor" placeholder="例: 田中" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="memberCount">自社予定人数</label>
+                    <input type="number" id="memberCount" min="1" value="4" required>
+                </div>
+
+                <h3>作業メンバー情報</h3>
+                <div id="memberInputs">
+                    <!-- JavaScriptで動的生成 -->
+                </div>
+
+                <button type="button" class="btn btn-primary" id="previewBtn">👁️ プレビュー</button>
+                <button type="button" class="btn btn-secondary" id="generatePDFBtn" style="display: none;">📄
+                    PDF生成</button>
+                <button type="button" class="btn btn-secondary" id="generatePNGBtn" style="display: none;">🖼️
+                    PNG生成</button>
+                <button type="button" class="btn btn-secondary" id="copyForLineBtn"
+                    style="display: none; background-color: #06C755;">📋
+                    LINE投稿用にコピペ</button>
+                <a href="../index.html" class="btn btn-back">戻る</a>
+            </form>
+
+            <!-- プレビューエリア -->
+            <div id="previewArea" style="display: none; margin-top: 30px;">
+                <h3>プレビュー</h3>
+                <div class="alert alert-warning">
+                    プレビューを確認して、問題なければPDFまたはPNGをダウンロードしてください。<br>
+                    ※プレビューは横スクロールできます。
+                </div>
+                <!-- テンプレート挿入場所 -->
+                <div id="templateContainer"></div>
+            </div>
+
+            <!-- 申請書テンプレート（非表示・複製用） -->
+            <div id="nightShiftTemplateSource" style="display: none;">
+                <!-- 内容はJSで生成 -->
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // セッションストレージからデータを読み込み
+        const savedData = sessionStorage.getItem('nightShiftData');
+        if (savedData) {
+            const data = JSON.parse(savedData);
+            document.getElementById('shiftDate').value = data.shiftDate;
+            document.getElementById('client').value = data.client;
+            document.getElementById('siteName').value = data.siteName;
+            document.getElementById('location').value = data.location;
+            document.getElementById('manager').value = data.manager;
+            document.getElementById('departureTime').value = data.departureTime;
+            document.getElementById('workStartTime').value = data.workStartTime;
+            document.getElementById('returnTime').value = data.returnTime;
+            document.getElementById('supervisor').value = data.supervisor;
+            document.getElementById('memberCount').value = data.memberCount;
+
+            // siteLeaveTimeがない場合はreturnTimeから推測（1時間前とか）
+            if (data.siteLeaveTime) {
+                document.getElementById('siteLeaveTime').value = data.siteLeaveTime;
+            } else {
+                // デフォルトで帰社時間の1時間前を入れておく
+                document.getElementById('siteLeaveTime').value = data.returnTime;
+            }
+
+            // セッションストレージをクリア
+            sessionStorage.removeItem('nightShiftData');
+        } else {
+            // 今日の日付をデフォルト設定
+            document.getElementById('shiftDate').valueAsDate = new Date();
+        }
+
+        // メンバー入力欄を動的生成
+        function updateMemberInputs() {
+            const count = parseInt(document.getElementById('memberCount').value) || 0;
+            const container = document.getElementById('memberInputs');
+            const savedData = sessionStorage.getItem('nightShiftData');
+            const loadedMembers = savedData ? JSON.parse(savedData).members : null;
+
+            container.innerHTML = '';
+
+            for (let i = 0; i < count; i++) {
+                const memberDiv = document.createElement('div');
+                memberDiv.className = 'form-group';
+                memberDiv.style.border = '1px solid #e0e0e0';
+                memberDiv.style.padding = '15px';
+                memberDiv.style.borderRadius = '8px';
+                memberDiv.style.marginBottom = '10px';
+
+                const memberData = loadedMembers && loadedMembers[i] ? loadedMembers[i] : {
+                    name: '', breakTime: 0, overtime: 0, breakStart: '', breakEnd: '',
+                    directReturn: false, preSiteOvertime: { hasOvertime: false }
+                };
+
+                memberDiv.innerHTML = `
+                    <h4>メンバー ${i + 1}</h4>
+                    <label>名前</label>
+                    <input type="text" class="member-name" placeholder="例: 田中さん" value="${memberData.name}" required>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center; flex-wrap: wrap;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="checkbox" class="member-direct-return" ${memberData.directReturn ? 'checked' : ''}> 直帰
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer; margin-left: 10px;">
+                            <input type="checkbox" class="member-has-pre-overtime" onchange="togglePreInput(this)" 
+                                ${memberData && memberData.preSiteOvertime && memberData.preSiteOvertime.hasOvertime ? 'checked' : ''}> 現場前残業あり
+                        </label>
+                    </div>
+
+                    <!-- 現場前残業入力エリア -->
+                    <div class="pre-overtime-area" style="display: ${memberData && memberData.preSiteOvertime && memberData.preSiteOvertime.hasOvertime ? 'block' : 'none'}; background: #f9f9f9; padding: 10px; margin-top: 5px; border-radius: 4px;">
+                        <span style="font-size: 12px; font-weight: bold;">現場前残業（事務所/工場）</span>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">開始</label>
+                                <input type="time" class="pre-start" value="${memberData.preSiteOvertime?.startTime || ''}">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">終了</label>
+                                <input type="time" class="pre-end" value="${memberData.preSiteOvertime?.endTime || ''}">
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 5px;">
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩開始</label>
+                                <input type="time" class="pre-break-start" value="${memberData.preSiteOvertime?.breakStart || ''}">
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 11px;">休憩終了</label>
+                                <input type="time" class="pre-break-end" value="${memberData.preSiteOvertime?.breakEnd || ''}">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <label>休憩時間（分）</label>
+                            <input type="number" class="member-break" min="0" value="${memberData.breakTime || 0}" placeholder="例: 60">
+                        </div>
+                        <div style="flex: 1;">
+                            <label>残業時間（時間）</label>
+                            <input type="number" class="member-overtime" min="0" step="0.5" value="${memberData.overtime || 0}" placeholder="例: 2">
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="flex: 1;">
+                            <label>休憩開始</label>
+                            <input type="time" class="member-break-start" value="${memberData.breakStart || ''}">
+                        </div>
+                        <div style="flex: 1;">
+                            <label>休憩終了</label>
+                            <input type="time" class="member-break-end" value="${memberData.breakEnd || ''}">
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(memberDiv);
+            }
+        }
+
+        // 人数変更時にメンバー入力欄を更新
+        document.getElementById('memberCount').addEventListener('change', updateMemberInputs);
+
+        // 初期表示
+        updateMemberInputs();
+
+        // 現場前残業の表示切り替え
+        window.togglePreInput = function (checkbox) {
+            const area = checkbox.closest('.form-group').querySelector('.pre-overtime-area');
+            area.style.display = checkbox.checked ? 'block' : 'none';
+        };
+
+        // サンプルデータ入力ボタン
+        document.getElementById('fillSampleBtn').addEventListener('click', function () {
+            document.getElementById('shiftDate').valueAsDate = new Date();
+            document.getElementById('client').value = 'サンリット建設';
+            document.getElementById('siteName').value = '横浜 CIAL スコーン';
+            document.getElementById('location').value = '横浜';
+            document.getElementById('manager').value = '米田 様';
+            document.getElementById('departureTime').value = '22:30';
+            document.getElementById('workStartTime').value = '23:00';
+            document.getElementById('siteLeaveTime').value = '02:00'; // 26:00
+            document.getElementById('returnTime').value = '02:00'; // 26:00
+            document.getElementById('supervisor').value = '田中';
+            document.getElementById('memberCount').value = 2;
+
+            updateMemberInputs();
+
+            // 少し待ってからメンバー情報を埋める
+            setTimeout(() => {
+                const names = ['星川', '田中'];
+                const memberNames = document.querySelectorAll('.member-name');
+                const memberBreaks = document.querySelectorAll('.member-break');
+                const memberOvertimes = document.querySelectorAll('.member-overtime');
+                const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+                const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+                const memberPreStarts = document.querySelectorAll('.pre-start');
+                const memberPreEnds = document.querySelectorAll('.pre-end');
+                const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+                const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+                const memberBreakStarts = document.querySelectorAll('.member-break-start');
+                const memberBreakEnds = document.querySelectorAll('.member-break-end');
+
+                names.forEach((name, i) => {
+                    if (memberNames[i]) memberNames[i].value = name;
+                    if (memberBreaks[i]) memberBreaks[i].value = 60;
+                    if (memberOvertimes[i]) memberOvertimes[i].value = 8;
+                    // 休憩時間を適当に設定（例: 00:00 - 01:00）
+                    if (memberBreakStarts[i]) memberBreakStarts[i].value = '00:00';
+                    if (memberBreakEnds[i]) memberBreakEnds[i].value = '01:00';
+
+                    // 2人目のメンバーに現場前残業を設定
+                    if (i === 1) {
+                        if (memberHasPre[i]) {
+                            memberHasPre[i].checked = true;
+                            // 手動で表示を切り替える
+                            const area = memberHasPre[i].closest('.form-group').querySelector('.pre-overtime-area');
+                            if (area) area.style.display = 'block';
+                        }
+                        if (memberPreStarts[i]) memberPreStarts[i].value = '17:00';
+                        if (memberPreEnds[i]) memberPreEnds[i].value = '18:00';
+                        if (memberPreBreakStarts[i]) memberPreBreakStarts[i].value = '';
+                        if (memberPreBreakEnds[i]) memberPreBreakEnds[i].value = '';
+                    }
+                });
+
+                alert('✅ サンプルデータを入力しました。「プレビュー」ボタンを押して確認してください。');
+            }, 100);
+        });
+
+        // プレビューボタン
+        document.getElementById('previewBtn').addEventListener('click', async function () {
+            if (!document.getElementById('nightShiftGenerateForm').checkValidity()) {
+                alert('全ての必須項目を入力してください');
+                return;
+            }
+
+            // データを収集
+            const data = collectFormData();
+
+            // テンプレートを生成
+            await generateTemplate(data);
+
+            // プレビュー表示
+            document.getElementById('previewArea').style.display = 'block';
+            document.getElementById('generatePDFBtn').style.display = 'block';
+            document.getElementById('generatePNGBtn').style.display = 'block';
+            document.getElementById('copyForLineBtn').style.display = 'block';
+
+            // プレビューエリアにスクロール
+            document.getElementById('previewArea').scrollIntoView({ behavior: 'smooth' });
+        });
+
+        // フォームデータを収集
+        function collectFormData() {
+            const members = [];
+            const memberNames = document.querySelectorAll('.member-name');
+            const memberBreaks = document.querySelectorAll('.member-break');
+            const memberOvertimes = document.querySelectorAll('.member-overtime');
+            const memberDirectReturns = document.querySelectorAll('.member-direct-return');
+
+            const memberHasPre = document.querySelectorAll('.member-has-pre-overtime');
+            const memberPreStarts = document.querySelectorAll('.pre-start');
+            const memberPreEnds = document.querySelectorAll('.pre-end');
+            const memberPreBreakStarts = document.querySelectorAll('.pre-break-start');
+            const memberPreBreakEnds = document.querySelectorAll('.pre-break-end');
+
+            const memberBreakStarts = document.querySelectorAll('.member-break-start');
+            const memberBreakEnds = document.querySelectorAll('.member-break-end');
+
+            memberNames.forEach((nameInput, index) => {
+                members.push({
+                    name: nameInput.value,
+                    breakTime: parseInt(memberBreaks[index].value) || 0,
+                    overtime: parseFloat(memberOvertimes[index].value) || 0,
+                    directReturn: memberDirectReturns[index] ? memberDirectReturns[index].checked : false,
+                    preSiteOvertime: {
+                        hasOvertime: memberHasPre[index] ? memberHasPre[index].checked : false,
+                        startTime: memberPreStarts[index] ? memberPreStarts[index].value : '',
+                        endTime: memberPreEnds[index] ? memberPreEnds[index].value : '',
+                        breakStart: memberPreBreakStarts[index] ? memberPreBreakStarts[index].value : '',
+                        breakEnd: memberPreBreakEnds[index] ? memberPreBreakEnds[index].value : ''
+                    },
+                    breakStart: memberBreakStarts[index].value,
+                    breakEnd: memberBreakEnds[index].value
+                });
+            });
+
+            return {
+                shiftDate: document.getElementById('shiftDate').value,
+                client: document.getElementById('client').value,
+                siteName: document.getElementById('siteName').value,
+                location: document.getElementById('location').value,
+                manager: document.getElementById('manager').value,
+                departureTime: document.getElementById('departureTime').value,
+                workStartTime: document.getElementById('workStartTime').value,
+                siteLeaveTime: document.getElementById('siteLeaveTime').value, // 追加
+                returnTime: document.getElementById('returnTime').value,
+                supervisor: document.getElementById('supervisor').value,
+                memberCount: document.getElementById('memberCount').value,
+                members: members
+            };
+        }
+
+        // 時間文字列を分に変換（17:00からの経過分）
+        function timeToMinutes(timeStr) {
+            if (!timeStr) return -1;
+            const [h, m] = timeStr.split(':').map(Number);
+            let minutes = h * 60 + m;
+
+            // 17:00を0とする
+            // 00:00〜08:00は翌日扱い (+24時間)
+            // 12:00より前なら翌日とみなす（夜勤なので）
+            if (h < 12) {
+                minutes += 24 * 60;
+            }
+
+            return minutes - (17 * 60);
+        }
+
+        // テンプレートを生成
+        async function generateTemplate(data) {
+            const container = document.getElementById('templateContainer');
+            container.innerHTML = '<div id="nightShiftTemplate"></div>';
+            const template = document.getElementById('nightShiftTemplate');
+
+            const date = new Date(data.shiftDate);
+            const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+
+            // タイムラインの時間帯（17時〜8時）= 15時間 = 900分
+            const totalMinutes = 15 * 60;
+            const hours = [];
+            for (let h = 17; h <= 23; h++) hours.push(h);
+            for (let h = 0; h <= 8; h++) hours.push(h);
+
+            // 時間計算
+            const departureMins = timeToMinutes(data.departureTime);
+            const workStartMins = timeToMinutes(data.workStartTime);
+            const siteLeaveMins = timeToMinutes(data.siteLeaveTime);
+            const returnMins = timeToMinutes(data.returnTime);
+
+            // 各メンバーのタイムライン行を生成
+            let memberTimelines = '';
+            data.members.forEach((member) => {
+                const overtime = member.overtime || 0;
+                const breakTime = member.breakTime || 0;
+                const breakStartMins = timeToMinutes(member.breakStart);
+                const breakEndMins = timeToMinutes(member.breakEnd);
+
+                // --- 時間計算ロジック (night-shift.htmlに合わせる) ---
+
+                // 1. 現場前残業（事務所/工場）
+                let preSiteGrossHours = 0; // 休憩込み
+                let preSiteNetHours = 0; // 休憩抜き
+                let preSiteBreakMinutes = 0;
+
+                if (member.preSiteOvertime && member.preSiteOvertime.hasOvertime) {
+                    const preSiteStart = member.preSiteOvertime.startTime;
+                    const preSiteEnd = member.preSiteOvertime.endTime;
+                    const preSiteBreakStart = member.preSiteOvertime.breakStart;
+                    const preSiteBreakEnd = member.preSiteOvertime.breakEnd;
+
+                    if (preSiteStart && preSiteEnd) {
+                        const [startH, startM] = preSiteStart.split(':').map(Number);
+                        const [endH, endM] = preSiteEnd.split(':').map(Number);
+                        let startMins = startH * 60 + startM;
+                        let endMins = endH * 60 + endM;
+                        if (endH < startH) endMins += 24 * 60; // 翌日
+
+                        const totalMins = endMins - startMins;
+                        preSiteGrossHours = Math.round((totalMins / 60) * 10) / 10;
+
+                        // 休憩時間を引く
+                        let netMins = totalMins;
+                        if (preSiteBreakStart && preSiteBreakEnd) {
+                            const [bStartH, bStartM] = preSiteBreakStart.split(':').map(Number);
+                            const [bEndH, bEndM] = preSiteBreakEnd.split(':').map(Number);
+                            const breakMins = (bEndH * 60 + bEndM) - (bStartH * 60 + bStartM);
+                            preSiteBreakMinutes = breakMins;
+                            netMins -= breakMins;
+                        }
+                        preSiteNetHours = Math.round((netMins / 60) * 10) / 10;
+                    }
+                }
+
+                // 2. 現場残業（出発～帰社の全時間）
+                let siteGrossHours = 0; // 休憩込み
+                let siteNetHours = 0; // 休憩抜き
+
+                // 現場での休憩時間（ユーザー入力値）
+                const siteBreakMinutes = member.breakTime || 0;
+
+                // 出発～帰社の全時間
+                // 直帰の場合は現場終了時間までを計算対象とする
+                let calcEndTimeMins = returnMins;
+                if (member.directReturn && siteLeaveMins >= 0) {
+                    calcEndTimeMins = siteLeaveMins;
+                }
+
+                if (departureMins >= 0 && calcEndTimeMins >= 0) {
+                    const totalMins = calcEndTimeMins - departureMins;
+                    siteGrossHours = Math.round((totalMins / 60) * 10) / 10;
+
+                    // 休憩時間を引く
+                    let netMins = totalMins;
+                    if (siteBreakMinutes > 0) {
+                        netMins -= siteBreakMinutes;
+                    }
+                    siteNetHours = Math.round((netMins / 60) * 10) / 10;
+                }
+
+                // 3. 合計
+                const totalGrossHours = Math.round((preSiteGrossHours + siteGrossHours) * 10) / 10;
+                const totalNetHours = Math.round((preSiteNetHours + siteNetHours) * 10) / 10;
+
+                // --- バー生成 ---
+                const createBar = (start, end, color) => {
+                    if (start < 0 || end < 0 || start >= end) return '';
+                    const left = (start / totalMinutes) * 100;
+                    const width = ((end - start) / totalMinutes) * 100;
+                    return `<div style="position: absolute; left: ${left}%; width: ${width}%; top: 2px; bottom: 2px; background-color: ${color}; z-index: 1;"></div>`;
+                };
+
+                // 工場/事務所行のバー: 現場前残業
+                let factoryBars = '';
+                if (member.preSiteOvertime && member.preSiteOvertime.hasOvertime) {
+                    const preSiteStartMins = timeToMinutes(member.preSiteOvertime.startTime);
+                    const preSiteEndMins = timeToMinutes(member.preSiteOvertime.endTime);
+                    if (preSiteStartMins >= 0 && preSiteEndMins >= 0) {
+                        factoryBars += createBar(preSiteStartMins, preSiteEndMins, '#FFA500'); // オレンジ色
+                    }
+                }
+
+                // 現場行のバー: 出発〜帰社全般
+                let siteBars = '';
+
+                // 1. 出発 -> 作業開始 (#FFD700)
+                if (departureMins >= 0 && workStartMins >= 0) {
+                    siteBars += createBar(departureMins, workStartMins, '#FFD700');
+                }
+                // 2. 作業: 作業開始 -> 現場終了 (#FFD700)
+                if (workStartMins >= 0 && siteLeaveMins >= 0) {
+                    siteBars += createBar(workStartMins, siteLeaveMins, '#FFD700');
+                }
+                // 3. 現場終了 -> 帰社 (直帰でない場合のみ) (#FFD700)
+                if (!member.directReturn && siteLeaveMins >= 0 && returnMins >= 0) {
+                    siteBars += createBar(siteLeaveMins, returnMins, '#FFD700');
+                }
+
+                // 休憩: 休憩開始 -> 休憩終了 (緑色、z-indexを上げて上に重ねる)
+                if (breakStartMins >= 0 && breakEndMins >= 0) {
+                    // 休憩バーはz-index: 2で上に表示
+                    const left = (breakStartMins / totalMinutes) * 100;
+                    const width = ((breakEndMins - breakStartMins) / totalMinutes) * 100;
+                    siteBars += `<div style="position: absolute; left: ${left}%; width: ${width}%; top: 2px; bottom: 2px; background-color: #90EE90; z-index: 2;"></div>`;
+                }
+
+                // 時間軸の目盛り線
+                let gridLines = '';
+                for (let i = 0; i <= 15; i++) {
+                    const left = (i / 15) * 100;
+                    gridLines += `<div style="position: absolute; left: ${left}%; top: 0; bottom: 0; border-left: 1px solid #ccc; z-index: 0;"></div>`;
+                }
+
+                // 情報表示用文字列作成
+                let timeInfo = `<span style="font-weight: bold; width: 100px; font-size: 11px;">名前 ${member.name}</span>`;
+
+                // 直帰表示
+                if (member.directReturn) {
+                    timeInfo += `<span style="margin-left: 5px; font-size: 10px; color: #d9534f; border: 1px solid #d9534f; padding: 0 2px; border-radius: 2px;">直帰</span>`;
+                }
+
+                // 現場前残業
+                if (preSiteGrossHours > 0) {
+                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場前残業${preSiteGrossHours}h</span>`;
+                    if (preSiteBreakMinutes > 0) {
+                        timeInfo += `<span style="margin-left: 2px; font-size: 10px;">(休${preSiteBreakMinutes}分)</span>`;
+                    }
+                    timeInfo += `<span style="margin-left: 2px; font-size: 10px;">抜${preSiteNetHours}h</span>`;
+                }
+
+                // 現場残業
+                if (siteGrossHours > 0) {
+                    timeInfo += `<span style="margin-left: 8px; font-size: 10px;">現場残業${siteGrossHours}h</span>`;
+                    if (siteBreakMinutes > 0) {
+                        timeInfo += `<span style="margin-left: 2px; font-size: 10px;">(休${siteBreakMinutes}分)</span>`;
+                    }
+                    timeInfo += `<span style="margin-left: 2px; font-size: 10px;">抜${siteNetHours}h</span>`;
+                }
+
+                // 合計
+                timeInfo += `<span style="margin-left: 10px; font-size: 11px; font-weight: bold;">合計${totalGrossHours}h(抜${totalNetHours}h)</span>`;
+
+
+                memberTimelines += `
+                    <div style="margin-bottom: 25px; page-break-inside: avoid;">
+                        <div style="display: flex; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #000; padding-bottom: 5px; flex-wrap: wrap;">
+                            ${timeInfo}
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; height: 22px; border-bottom: 1px solid #000;">
+                            <span style="width: 90px; font-size: 11px; padding-left: 5px;">工場 事務所</span>
+                            <div style="flex: 1; position: relative; height: 100%; border-left: 1px solid #000;">
+                                ${gridLines}
+                                ${factoryBars}
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; height: 22px; border-bottom: 1px solid #000;">
+                            <span style="width: 90px; font-size: 11px; padding-left: 5px;">現場</span>
+                            <div style="flex: 1; position: relative; height: 100%; border-left: 1px solid #000;">
+                                ${gridLines}
+                                ${siteBars}
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; align-items: center; height: 18px;">
+                            <span style="width: 90px; font-size: 9px;"></span>
+                            <div style="flex: 1; display: flex;">
+                                ${hours.map(h => `<div style="flex: 1; text-align: center; font-size: 9px;">${h}</div>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            template.innerHTML = `
+                <div style="width: 100%; height: 100%; position: relative;">
+                    <h2 style="text-align: center; margin-bottom: 15px; font-size: 18px; font-weight: bold;">${date.getFullYear()}年　夜勤申請シート</h2>
+                    
+                    <div style="font-size: 10px; text-align: right; margin-bottom: 8px; line-height: 1.3;">
+                        ＊事前にE-netLINEへ送るようにお願いいたします。<br>
+                        ＊起票は帰社時間、連絡の場合は現場終了丁寧間にて
+                    </div>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px;">
+                        <tr>
+                            <td style="padding: 5px; border: 1px solid #000; width: 11%; background: #f5f5f5;">日付</td>
+                            <td style="padding: 5px; border: 1px solid #000; width: 18%;">${dateStr}</td>
+                            <td style="padding: 5px; border: 1px solid #000; width: 11%; background: #f5f5f5;">元請け</td>
+                            <td style="padding: 5px; border: 1px solid #000; width: 18%;">${data.client}</td>
+                            <td style="padding: 5px; border: 1px solid #000; width: 11%; background: #f5f5f5;">担当者</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.manager}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">現場名</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.siteName}</td>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">場所</td>
+                            <td style="padding: 5px; border: 1px solid #000;" colspan="3">${data.location}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">出発予定時刻</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.departureTime}</td>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">作業開始時刻</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.workStartTime}</td>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">帰社予定時刻</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.returnTime}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">合計作業予定時間</td>
+                            <td style="padding: 5px; border: 1px solid #000;">5時間00分〜</td>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">管理者</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.supervisor}</td>
+                            <td style="padding: 5px; border: 1px solid #000; background: #f5f5f5;">自社予定人数</td>
+                            <td style="padding: 5px; border: 1px solid #000;">${data.memberCount}人</td>
+                        </tr>
+                    </table>
+
+                    ${memberTimelines}
+
+                    <div style="margin-top: 30px; font-size: 10px; color: #666; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
+                        通信状況などでエラーが出る場合は、従来通り手元の申請書PDFに記入して報告してください。
+                    </div>
+                </div>
+            `;
+        }
+
+        // PDF生成
+        document.getElementById('generatePDFBtn').addEventListener('click', async function () {
+            const template = document.getElementById('nightShiftTemplate');
+
+            try {
+                window.scrollTo(0, 0);
+
+                const canvas = await html2canvas(template, {
+                    scale: 2,
+                    backgroundColor: '#ffffff',
+                    useCORS: true
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf;
+                // A4縦向き(portrait)
+                const pdf = new jsPDF('p', 'mm', 'a4');
+
+                const imgWidth = 210; // A4 width in mm
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                pdf.save('夜勤申請書.pdf');
+
+                alert('✅ PDFをダウンロードしました');
+            } catch (error) {
+                console.error('PDF生成エラー:', error);
+                alert('❌ PDF生成に失敗しました');
+            }
+        });
+
+        // PNG生成
+        document.getElementById('generatePNGBtn').addEventListener('click', async function () {
+            const template = document.getElementById('nightShiftTemplate');
+
+            try {
+                window.scrollTo(0, 0);
+
+                const canvas = await html2canvas(template, {
+                    scale: 2,
+                    backgroundColor: '#ffffff'
+                });
+
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '夜勤申請書.png';
+                    a.click();
+                    URL.revokeObjectURL(url);
+
+                    alert('✅ PNG画像をダウンロードしました');
+                });
+            } catch (error) {
+                console.error('PNG生成エラー:', error);
+                alert('❌ PNG生成に失敗しました');
+            }
+        });
+
+        // LINE用コピー
+        document.getElementById('copyForLineBtn').addEventListener('click', function () {
+            const data = collectFormData();
+
+            let text = `【夜勤報告】\n`;
+            text += `現場名: ${data.siteName}\n`;
+            text += `作業時間: ${data.workStartTime} 〜 ${data.siteLeaveTime}\n\n`;
+
+            data.members.forEach(member => {
+                text += `${member.name}: 早出0h 残業${member.overtime}h\n`;
+            });
+
+            copyToLineAndOpen(text);
+        });
+    </script>
+</body>
+
+</html>

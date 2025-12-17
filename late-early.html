@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>遅刻/早退申告</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">🕐 遅刻/早退申告</h1>
+
+            <form id="lateEarlyForm">
+                <div class="form-group">
+                    <label for="type">種別</label>
+                    <select id="type" required>
+                        <option value="遅刻">遅刻</option>
+                        <option value="早退">早退</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="date">日付</label>
+                    <input type="date" id="date" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="minutes">時間（分）</label>
+                    <input type="number" id="minutes" min="1" placeholder="例: 30" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="reason">理由</label>
+                    <select id="reason" required>
+                        <option value="">選択してください</option>
+                        <option value="交通渋滞">交通渋滞</option>
+                        <option value="車両故障">車両故障</option>
+                        <option value="電車遅延">電車遅延</option>
+                        <option value="体調不良">体調不良</option>
+                        <option value="家庭の事情">家庭の事情</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="otherReasonGroup" style="display: none;">
+                    <label for="otherReason">理由の詳細</label>
+                    <input type="text" id="otherReason" placeholder="理由を入力してください">
+                </div>
+
+                <button type="submit" class="btn btn-primary">📋 LINEグループに投稿</button>
+                <button type="button" class="btn btn-secondary" id="saveOnly">💾 保存のみ</button>
+                <a href="../index.html" class="btn btn-back">戻る</a>
+            </form>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // 今日の日付をデフォルト設定
+        document.getElementById('date').valueAsDate = new Date();
+
+        // 理由が「その他」の場合、詳細入力欄を表示
+        document.getElementById('reason').addEventListener('change', function () {
+            const otherGroup = document.getElementById('otherReasonGroup');
+            if (this.value === 'その他') {
+                otherGroup.style.display = 'block';
+                document.getElementById('otherReason').required = true;
+            } else {
+                otherGroup.style.display = 'none';
+                document.getElementById('otherReason').required = false;
+            }
+        });
+
+        // フォーム送信（LINEに投稿）
+        document.getElementById('lateEarlyForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            const type = document.getElementById('type').value;
+            const date = document.getElementById('date').value;
+            const minutes = document.getElementById('minutes').value;
+            let reason = document.getElementById('reason').value;
+
+            if (reason === 'その他') {
+                reason = document.getElementById('otherReason').value;
+            }
+
+            const data = {
+                type: type,
+                date: date,
+                minutes: parseInt(minutes),
+                reason: reason,
+                category: '遅刻早退'
+            };
+
+            // データを保存
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+
+            // LINE投稿用テキスト生成
+            const lineText = `【${type}申告】\n日付: ${formatDate(date)}\n時間: ${minutes}分\n理由: ${reason}`;
+
+            // LINEにコピーして開く
+            copyToLineAndOpen(lineText);
+
+            // フォームをリセット
+            setTimeout(() => {
+                this.reset();
+                document.getElementById('date').valueAsDate = new Date();
+            }, 1000);
+        });
+
+        // 保存のみ
+        document.getElementById('saveOnly').addEventListener('click', function () {
+            const type = document.getElementById('type').value;
+            const date = document.getElementById('date').value;
+            const minutes = document.getElementById('minutes').value;
+            let reason = document.getElementById('reason').value;
+
+            if (reason === 'その他') {
+                reason = document.getElementById('otherReason').value || reason;
+            }
+
+            if (!date || !minutes || !reason) {
+                alert('全ての項目を入力してください');
+                return;
+            }
+
+            const data = {
+                type: type,
+                date: date,
+                minutes: parseInt(minutes),
+                reason: reason,
+                category: '遅刻早退'
+            };
+
+            saveData(STORAGE_KEYS.ATTENDANCE, data);
+            alert('✅ データを保存しました');
+
+            document.getElementById('lateEarlyForm').reset();
+            document.getElementById('date').valueAsDate = new Date();
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作業報告</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">📝 作業報告</h1>
+
+            <div class="alert alert-info">
+                💡 作業情報を入力後、iPadで報告書PDF に記入してLINEに投稿してください
+            </div>
+
+            <form id="workReportForm">
+                <div class="form-group">
+                    <label for="workDate">作業日</label>
+                    <input type="date" id="workDate" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="siteName">現場名</label>
+                    <input type="text" id="siteName" placeholder="例: ○○マンション改修工事" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="workContent">作業内容</label>
+                    <textarea id="workContent" rows="4" placeholder="例: キッチン組み立て、取り付け作業完了" required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="members">作業メンバー（任意）</label>
+                    <input type="text" id="members" placeholder="例: 田中、佐藤、鈴木">
+                </div>
+
+                <div class="form-group">
+                    <label for="notes">メモ・特記事項（任意）</label>
+                    <textarea id="notes" rows="3" placeholder="問題点や次回作業の注意点など"></textarea>
+                </div>
+
+                <button type="button" class="btn btn-primary" id="saveAndCopy">💾 保存してLINE用テキストをコピー</button>
+                <button type="button" class="btn btn-secondary" id="saveOnly">💾 保存のみ</button>
+                <a href="../index.html" class="btn btn-back">戻る</a>
+            </form>
+
+            <div id="instructionBox" class="alert alert-warning" style="display: none; margin-top: 20px;">
+                <h3>📋 次の手順で作業報告を完了してください</h3>
+                <ol style="margin: 10px 0; padding-left: 20px;">
+                    <li>iPadで作業報告書PDFを開く</li>
+                    <li>上記の内容をPDFに記入</li>
+                    <li>現場写真を撮影（必要に応じて）</li>
+                    <li>完成したPDFと写真をLINEアルバムに投稿</li>
+                </ol>
+                <p><strong>LINEに投稿する文章はコピーされています！</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // 今日の日付をデフォルト設定
+        document.getElementById('workDate').valueAsDate = new Date();
+
+        // 保存してLINE用テキストをコピー
+        document.getElementById('saveAndCopy').addEventListener('click', function () {
+            const workDate = document.getElementById('workDate').value;
+            const siteName = document.getElementById('siteName').value;
+            const workContent = document.getElementById('workContent').value;
+            const members = document.getElementById('members').value;
+            const notes = document.getElementById('notes').value;
+
+            if (!workDate || !siteName || !workContent) {
+                alert('必須項目を入力してください');
+                return;
+            }
+
+            const data = {
+                workDate: workDate,
+                siteName: siteName,
+                workContent: workContent,
+                members: members,
+                notes: notes,
+                category: '作業報告'
+            };
+
+            // データを保存
+            saveData(STORAGE_KEYS.WORK_REPORTS, data);
+
+            // LINE投稿用テキスト生成
+            let lineText = `【作業報告】\n日付: ${formatDate(workDate)}\n現場: ${siteName}\n作業内容: ${workContent}`;
+
+            if (members) {
+                lineText += `\nメンバー: ${members}`;
+            }
+
+            if (notes) {
+                lineText += `\n備考: ${notes}`;
+            }
+
+            // クリップボードにコピー
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(lineText)
+                    .then(() => {
+                        showCopySuccess();
+                        document.getElementById('instructionBox').style.display = 'block';
+                        document.getElementById('instructionBox').scrollIntoView({ behavior: 'smooth' });
+                    })
+                    .catch(err => {
+                        alert('コピーに失敗しました');
+                    });
+            } else {
+                alert('この機能はHTTPS環境で使用できます');
+            }
+        });
+
+        // 保存のみ
+        document.getElementById('saveOnly').addEventListener('click', function () {
+            const workDate = document.getElementById('workDate').value;
+            const siteName = document.getElementById('siteName').value;
+            const workContent = document.getElementById('workContent').value;
+            const members = document.getElementById('members').value;
+            const notes = document.getElementById('notes').value;
+
+            if (!workDate || !siteName || !workContent) {
+                alert('必須項目を入力してください');
+                return;
+            }
+
+            const data = {
+                workDate: workDate,
+                siteName: siteName,
+                workContent: workContent,
+                members: members,
+                notes: notes,
+                category: '作業報告'
+            };
+
+            saveData(STORAGE_KEYS.WORK_REPORTS, data);
+            alert('✅ データを保存しました');
+
+            document.getElementById('workReportForm').reset();
+            document.getElementById('workDate').valueAsDate = new Date();
+            document.getElementById('instructionBox').style.display = 'none';
+        });
+    </script>
+</body>
+
+</html>

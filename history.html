@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データ一覧</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        /* ユーザー名を目立たせるためのスタイル */
+        .record-card {
+            margin-bottom: 15px;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        .user-icon {
+            font-size: 20px;
+        }
+
+        .user-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+
+        .category-badge {
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+
+        .timestamp {
+            text-align: right;
+            font-size: 12px;
+            color: #95a5a6;
+        }
+
+        .card-body {
+            padding-left: 5px;
+        }
+
+        .detail-label {
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <nav class="nav-bar">
+            <a href="../index.html">
+                <span class="back-arrow">←</span>
+                戻る
+            </a>
+        </nav>
+
+        <div class="form-container">
+            <h1 class="page-title">📊 データ一覧</h1>
+
+            <!-- 表示方法選択 -->
+            <div class="form-group">
+                <label>表示方法</label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="viewMode" value="date" checked style="margin-right: 5px;">
+                        📅 日付ごと
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="viewMode" value="user" style="margin-right: 5px;">
+                        👤 人ごと
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="viewMode" value="category" style="margin-right: 5px;">
+                        📋 カテゴリごと
+                    </label>
+                </div>
+                <label>並び順</label>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="sortOrder" value="desc" checked style="margin-right: 5px;">
+                        ⬇️ 新しい順
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="sortOrder" value="asc" style="margin-right: 5px;">
+                        ⬆️ 古い順
+                    </label>
+                </div>
+            </div>
+
+            <!-- フィルター -->
+            <div style="padding: 20px; background: #f8f9fa; border-radius: 12px; margin-bottom: 20px;">
+                <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 18px;">🔍 絞り込み条件</h3>
+
+                <div class="form-group">
+                    <label for="filterUser">👤 社員で絞り込み</label>
+                    <select id="filterUser">
+                        <option value="all">全員</option>
+                        <!-- JavaScriptで動的生成 -->
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="filterCategory">📋 カテゴリーで絞り込み</label>
+                    <select id="filterCategory">
+                        <option value="all">全て表示</option>
+                        <option value="遅刻早退">遅刻/早退</option>
+                        <option value="有給申請">有給申請</option>
+                        <option value="代休申請">代休申請</option>
+                        <option value="作業報告">作業報告</option>
+                        <option value="夜勤申請">夜勤申請</option>
+                        <option value="夜勤メンバー指示">夜勤メンバー指示</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="filterDateFrom">📅 期間で絞り込み（開始日）</label>
+                    <input type="date" id="filterDateFrom">
+                </div>
+
+                <div class="form-group">
+                    <label for="filterDateTo">📅 期間で絞り込み（終了日）</label>
+                    <input type="date" id="filterDateTo">
+                </div>
+
+                <button type="button" class="btn btn-secondary" id="clearFiltersBtn" style="margin-top: 10px;">🔄
+                    フィルターをクリア</button>
+            </div>
+
+            <div id="recordCount" class="alert alert-info">
+                読み込み中...
+            </div>
+
+            <div id="dataList">
+                <!-- JavaScriptで動的生成 -->
+            </div>
+
+            <a href="../index.html" class="btn btn-back mt-20">戻る</a>
+        </div>
+    </div>
+
+    <script src="../js/storage.js"></script>
+    <script src="../js/utils.js"></script>
+    <script>
+        // デフォルトで今月の範囲を設定
+        const today = new Date();
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+        document.getElementById('filterDateFrom').valueAsDate = firstDayOfMonth;
+        document.getElementById('filterDateTo').valueAsDate = lastDayOfMonth;
+
+        // ユーザーリストを構築
+        function buildUserFilter() {
+            const allData = getAllData();
+            const users = new Set();
+
+            allData.forEach(record => {
+                if (record.userName) {
+                    users.add(record.userName);
+                }
+            });
+
+            const select = document.getElementById('filterUser');
+            select.innerHTML = '<option value="all">全員</option>';
+
+            Array.from(users).sort().forEach(user => {
+                const option = document.createElement('option');
+                option.value = user;
+                option.textContent = user;
+                select.appendChild(option);
+            });
+        }
+
+        // 全データを取得
+        function getAllData() {
+            return [
+                ...getData(STORAGE_KEYS.ATTENDANCE),
+                ...getData(STORAGE_KEYS.WORK_REPORTS),
+                ...getData(STORAGE_KEYS.NIGHT_SHIFTS),
+                ...getData(STORAGE_KEYS.TEAM_INSTRUCTIONS)
+            ];
+        }
+
+        // データをフィルタリング
+        function filterData() {
+            let allData = getAllData();
+
+            // ユーザーフィルター
+            const filterUser = document.getElementById('filterUser').value;
+            if (filterUser !== 'all') {
+                allData = allData.filter(record => record.userName === filterUser);
+            }
+
+            // カテゴリフィルター
+            const filterCategory = document.getElementById('filterCategory').value;
+            if (filterCategory !== 'all') {
+                allData = allData.filter(record => record.category === filterCategory);
+            }
+
+            // 日付範囲フィルター
+            const filterDateFrom = document.getElementById('filterDateFrom').value;
+            const filterDateTo = document.getElementById('filterDateTo').value;
+
+            if (filterDateFrom || filterDateTo) {
+                allData = allData.filter(record => {
+                    const recordDate = new Date(record.timestamp);
+                    const recordDateOnly = new Date(recordDate.getFullYear(), recordDate.getMonth(), recordDate.getDate());
+
+                    if (filterDateFrom && filterDateTo) {
+                        const fromDate = new Date(filterDateFrom);
+                        const toDate = new Date(filterDateTo);
+                        return recordDateOnly >= fromDate && recordDateOnly <= toDate;
+                    } else if (filterDateFrom) {
+                        const fromDate = new Date(filterDateFrom);
+                        return recordDateOnly >= fromDate;
+                    } else if (filterDateTo) {
+                        const toDate = new Date(filterDateTo);
+                        return recordDateOnly <= toDate;
+                    }
+                    return true;
+                });
+            }
+
+            return allData;
+        }
+
+        // フィルターをクリア
+        function clearFilters() {
+            document.getElementById('filterUser').value = 'all';
+            document.getElementById('filterCategory').value = 'all';
+
+            // デフォルトで今月の範囲を設定
+            const today = new Date();
+            const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+            document.getElementById('filterDateFrom').valueAsDate = firstDayOfMonth;
+            document.getElementById('filterDateTo').valueAsDate = lastDayOfMonth;
+
+            displayData();
+        }
+
+        // データを表示
+        function displayData() {
+            console.log('displayData called');
+            const viewMode = document.querySelector('input[name="viewMode"]:checked').value;
+            const sortOrder = document.querySelector('input[name="sortOrder"]:checked').value;
+            console.log('ViewMode:', viewMode, 'SortOrder:', sortOrder);
+
+            const filteredData = filterData();
+            const dataList = document.getElementById('dataList');
+
+            // 件数表示
+            document.getElementById('recordCount').textContent = `表示件数: ${filteredData.length}件`;
+
+            dataList.innerHTML = '';
+
+            if (filteredData.length === 0) {
+                dataList.innerHTML = '<div class="alert alert-warning">データがありません</div>';
+                return;
+            }
+
+            if (viewMode === 'date') {
+                displayByDate(filteredData, sortOrder);
+            } else if (viewMode === 'user') {
+                displayByUser(filteredData, sortOrder);
+            } else if (viewMode === 'category') {
+                displayByCategory(filteredData, sortOrder);
+            }
+        }
+
+        // 日付ごとに表示
+        function displayByDate(data, sortOrder) {
+            // 日付でグループ化
+            const groupedByDate = {};
+
+            data.forEach(record => {
+                const recordDate = new Date(record.timestamp);
+                const dateKey = `${recordDate.getFullYear()}/${String(recordDate.getMonth() + 1).padStart(2, '0')}/${String(recordDate.getDate()).padStart(2, '0')}`;
+
+                if (!groupedByDate[dateKey]) {
+                    groupedByDate[dateKey] = [];
+                }
+                groupedByDate[dateKey].push(record);
+            });
+
+            // 日付でソートして表示
+            let sortedDates = Object.keys(groupedByDate).sort();
+            if (sortOrder === 'desc') {
+                sortedDates = sortedDates.reverse();
+            }
+
+            sortedDates.forEach(date => {
+                const section = document.createElement('div');
+                section.innerHTML = `
+                    <h3 style="margin-top: 20px; padding: 10px; background: #4A90E2; color: white; border-radius: 8px;">
+                        📅 ${date}（${groupedByDate[date].length}件）
+                    </h3>
+                `;
+
+                // グループ内のレコードもソート（念のため）
+                groupedByDate[date].sort((a, b) => {
+                    const dateA = new Date(a.timestamp);
+                    const dateB = new Date(b.timestamp);
+                    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+                });
+
+                groupedByDate[date].forEach(record => {
+                    const card = createRecordCard(record);
+                    section.appendChild(card);
+                });
+
+                document.getElementById('dataList').appendChild(section);
+            });
+        }
+
+        // 人ごとに表示
+        function displayByUser(data, sortOrder) {
+            // ユーザーでグループ化
+            const groupedByUser = {};
+
+            data.forEach(record => {
+                const user = record.userName || '未設定';
+
+                if (!groupedByUser[user]) {
+                    groupedByUser[user] = [];
+                }
+                groupedByUser[user].push(record);
+            });
+
+            // ユーザー名でソートして表示
+            Object.keys(groupedByUser).sort().forEach(user => {
+                const section = document.createElement('div');
+                section.innerHTML = `
+                    <h3 style="margin-top: 20px; padding: 10px; background: #F5A623; color: white; border-radius: 8px;">
+                        👤 ${user}（${groupedByUser[user].length}件）
+                    </h3>
+                `;
+
+                // 日付でソート
+                groupedByUser[user].sort((a, b) => {
+                    const dateA = new Date(a.timestamp);
+                    const dateB = new Date(b.timestamp);
+                    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+                });
+
+                groupedByUser[user].forEach(record => {
+                    const card = createRecordCard(record);
+                    section.appendChild(card);
+                });
+
+                document.getElementById('dataList').appendChild(section);
+            });
+        }
+
+        // カテゴリごとに表示
+        function displayByCategory(data, sortOrder) {
+            // カテゴリでグループ化
+            const groupedByCategory = {};
+
+            data.forEach(record => {
+                const category = record.category || '未分類';
+
+                if (!groupedByCategory[category]) {
+                    groupedByCategory[category] = [];
+                }
+                groupedByCategory[category].push(record);
+            });
+
+            // カテゴリでソートして表示
+            const categoryOrder = ['遅刻早退', '有給申請', '代休申請', '作業報告', '夜勤申請', '夜勤メンバー指示'];
+            const sortedCategories = Object.keys(groupedByCategory).sort((a, b) => {
+                const indexA = categoryOrder.indexOf(a);
+                const indexB = categoryOrder.indexOf(b);
+                if (indexA === -1) return 1;
+                if (indexB === -1) return -1;
+                return indexA - indexB;
+            });
+
+            sortedCategories.forEach(category => {
+                const section = document.createElement('div');
+                section.innerHTML = `
+                    <h3 style="margin-top: 20px; padding: 10px; background: #667eea; color: white; border-radius: 8px;">
+                        📋 ${category}（${groupedByCategory[category].length}件）
+                    </h3>
+                `;
+
+                // 日付でソート
+                groupedByCategory[category].sort((a, b) => {
+                    const dateA = new Date(a.timestamp);
+                    const dateB = new Date(b.timestamp);
+                    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+                });
+
+                groupedByCategory[category].forEach(record => {
+                    const card = createRecordCard(record);
+                    section.appendChild(card);
+                });
+
+                document.getElementById('dataList').appendChild(section);
+            });
+        }
+
+        // レコードカードを作成
+        function createRecordCard(record) {
+            const card = document.createElement('div');
+            card.className = 'alert alert-info record-card';
+            card.innerHTML = formatRecord(record);
+            return card;
+        }
+
+        // レコードをフォーマット
+        function formatRecord(record) {
+            const userName = record.userName || '未設定';
+            const category = record.category;
+            const timestamp = new Date(record.timestamp).toLocaleString('ja-JP');
+
+            // カードヘッダー（ユーザー名とカテゴリー）
+            let html = `
+                <div class="card-header">
+                    <div>
+                        <div class="user-info">
+                            <span class="user-icon">👤</span>
+                            <span class="user-name">${userName}</span>
+                        </div>
+                        <div class="category-badge">
+                            <strong>【${category}】</strong>
+                        </div>
+                    </div>
+                    <div class="timestamp">
+                        ${timestamp}
+                    </div>
+                </div>
+            `;
+
+            // カード本体（詳細情報）
+            html += '<div class="card-body">';
+
+            switch (record.category) {
+                case '遅刻早退':
+                    html += `<span class="detail-label">種別:</span> ${record.type}<br>`;
+                    html += `<span class="detail-label">日付:</span> ${formatDate(record.date)}<br>`;
+                    html += `<span class="detail-label">時間:</span> ${record.minutes}分<br>`;
+                    html += `<span class="detail-label">理由:</span> ${record.reason}`;
+                    break;
+
+                case '有給申請':
+                    if (record.startDate === record.endDate) {
+                        html += `<span class="detail-label">日付:</span> ${formatDate(record.startDate)}<br>`;
+                    } else {
+                        html += `<span class="detail-label">期間:</span> ${formatDate(record.startDate)} 〜 ${formatDate(record.endDate)}<br>`;
+                    }
+                    html += `<span class="detail-label">日数:</span> ${record.days}日<br>`;
+                    html += `<span class="detail-label">理由:</span> ${record.reason}`;
+                    break;
+
+                case '代休申請':
+                    html += `<span class="detail-label">代休取得日:</span> ${formatDate(record.leaveDate)}<br>`;
+                    html += `<span class="detail-label">休日出勤日:</span> ${formatDate(record.workDate)}<br>`;
+                    if (record.note) {
+                        html += `<span class="detail-label">備考:</span> ${record.note}`;
+                    }
+                    break;
+
+                case '作業報告':
+                    html += `<span class="detail-label">作業日:</span> ${formatDate(record.workDate)}<br>`;
+                    html += `<span class="detail-label">現場:</span> ${record.siteName}<br>`;
+                    html += `<span class="detail-label">作業内容:</span> ${record.workContent}<br>`;
+                    if (record.members) {
+                        html += `<span class="detail-label">メンバー:</span> ${record.members}<br>`;
+                    }
+                    if (record.notes) {
+                        html += `<span class="detail-label">備考:</span> ${record.notes}`;
+                    }
+                    break;
+
+                case '夜勤申請':
+                    html += `<span class="detail-label">夜勤日:</span> ${formatDate(record.shiftDate)}<br>`;
+                    if (record.managementNumber) {
+                        html += `<span class="detail-label">管理番号:</span> ${record.managementNumber}<br>`;
+                    }
+                    html += `<span class="detail-label">現場:</span> ${record.siteName}<br>`;
+                    html += `<span class="detail-label">時間:</span> ${record.workStartTime} 〜 ${record.siteLeaveTime}<br>`;
+                    html += `<span class="detail-label">作業内容:</span> ${record.workContent}<br>`;
+
+                    if (record.members && Array.isArray(record.members)) {
+                        html += `<span class="detail-label">メンバー:</span><br>`;
+                        record.members.forEach(m => {
+                            let memberInfo = `　・${m.name}`;
+                            const details = [];
+
+                            // 現場前残業
+                            if (m.preSiteOvertime && m.preSiteOvertime.hasOvertime) {
+                                let preText = '現場前残業あり';
+                                if (m.preSiteOvertime.startTime && m.preSiteOvertime.endTime) {
+                                    preText += `(${m.preSiteOvertime.startTime}〜${m.preSiteOvertime.endTime})`;
+                                }
+                                details.push(preText);
+                            }
+
+                            // 現場残業
+                            if (m.overtime && m.overtime > 0) {
+                                details.push(`現場残業${m.overtime}h`);
+                            }
+
+                            if (details.length > 0) {
+                                memberInfo += ` [${details.join(', ')}]`;
+                            }
+                            html += memberInfo + '<br>';
+                        });
+                    } else {
+                        html += `<span class="detail-label">メンバー:</span> ${record.members}<br>`;
+                    }
+
+                    if (record.notes) {
+                        html += `<span class="detail-label">備考:</span> ${record.notes}`;
+                    }
+                    break;
+
+                case '夜勤メンバー指示':
+                    html += `<span class="detail-label">作業日:</span> ${formatDate(record.date)}<br>`;
+                    html += `<span class="detail-label">指示内容:</span><br>`;
+                    record.instructions.forEach(inst => {
+                        const parts = [];
+                        if (inst.early > 0) parts.push(`早出${inst.early}時間`);
+                        if (inst.overtime > 0) parts.push(`残業${inst.overtime}時間`);
+                        if (parts.length === 0) parts.push('通常勤務');
+                        html += `　・${inst.member}: ${parts.join('、')}<br>`;
+                    });
+                    break;
+            }
+
+            html += '</div>';
+
+            return html;
+        }
+
+        // 初期化
+        buildUserFilter();
+        displayData();
+
+        // イベントリスナー
+        document.querySelectorAll('input[name="viewMode"]').forEach(radio => {
+            radio.addEventListener('change', displayData);
+        });
+        document.querySelectorAll('input[name="sortOrder"]').forEach(radio => {
+            radio.addEventListener('change', displayData);
+        });
+        document.getElementById('filterUser').addEventListener('change', displayData);
+        document.getElementById('filterCategory').addEventListener('change', displayData);
+        document.getElementById('filterDateFrom').addEventListener('change', displayData);
+        document.getElementById('filterDateTo').addEventListener('change', displayData);
+        document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+    </script>
+</body>
+
+</html>
